@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import crypto from "crypto";
 import { getChatResponse } from "./chatbot.js";
-import { db, run, all, get } from "./db.js";
+import { db, run, all, get, findOrCreateCustomer } from "./db.js";
 
 // env
 dotenv.config();
@@ -38,9 +38,9 @@ async function isSlotFull(date, time) {
 
 async function insertBooking(b) {
   await run(
-    `INSERT INTO appointments (id, name, service, date, time, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [b.id, b.name, b.service, b.date, b.time, b.createdAt]
+    `INSERT INTO appointments (id, customer_id, name, service, date, time, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [b.id, b.customerId, b.name, b.service, b.date, b.time, b.createdAt]
   );
   return b;
 }
@@ -88,79 +88,91 @@ function isComplete(b) {
   );
 }
 
-// --- business hours + blackout helpers ---
+// --- helper for dates / times ---
 
 function getDowFromISO(dateStr) {
-  const d = new Date(dateStr); // 'YYYY-MM-DD'
-  return d.getDay(); // 0=Sun..6=Sat
+  // dateStr: 'YYYY-MM-DD'
+  // JS getDay(): 0=Sun, 1=Mon, ..., 6=Sat
+  const d = new Date(dateStr + "T00:00:00");
+  return d.getDay();
 }
 
-async function getHoursForDate(dateStr) {
-  const dow = getDowFromISO(dateStr);
+// --- DB helpers for hours + blackouts ---
 
-  // hours table has column 'dow', not 'date'
+async function getHoursForDate(dateStr) {
+  const dow = getDowFromISO(dateStr); // 0=Sun, 1=Mon, ...
   return await get("SELECT open, close FROM hours WHERE dow = ?", [dow]);
 }
 
-// blackout *does* use a real 'date' column
+// blackout is keyed by real calendar date
 async function getBlackoutForDate(dateStr) {
   return await get("SELECT date, note FROM blackouts WHERE date = ?", [
     dateStr,
   ]);
 }
 
-// alias used elsewhere
+// keep this if you use it elsewhere for messaging
 async function findBlackout(dateStr) {
-  return getBlackoutForDate(dateStr);
+  return await get("SELECT date, note FROM blackouts WHERE date = ?", [
+    dateStr,
+  ]);
 }
+
+// --- main business-hours guard ---
 
 export async function isWithinBusinessHours(dateStr, timeStr) {
+  // 1) Hard-closed if it’s a blackout date
+  const blackout = await getBlackoutForDate(dateStr);
+  if (blackout) return false;
+
+  // 2) Get dynamic hours for that weekday
   const hours = await getHoursForDate(dateStr);
-
-  // If no hours configured for that day, treat as always open
-  if (!hours) return true;
-
-  const { open, close } = hours;
-  return timeStr >= open && timeStr <= close;
-}
-
-// Suggest up to `limit` free slots on a given date, starting from a requested time
-async function nextAvailableSlots(dateStr, startHHMM, durationMin, limit = 3) {
-  // If date is fully blacked out, no suggestions
-  if (await findBlackout(dateStr)) {
-    return [];
-  }
-
-  // Get working hours for that date
-  const hours = await getHoursForDate(dateStr);
-  if (!hours) {
-    return [];
-  }
+  if (!hours) return false; // no hours configured for that day
 
   const { open, close } = hours;
 
   const openMins = hhmmToMinutes(open);
   const closeMins = hhmmToMinutes(close);
 
-  // Start from either requested time or opening time
+  const start = hhmmToMinutes(timeStr);
+  const end = start + SERVICE_DURATION_MIN; // from env
+
+  // must be fully inside open/close
+  return start >= openMins && end <= closeMins;
+}
+
+async function nextAvailableSlots(
+  dateStr,
+  startHHMM,
+  durationMin,
+  limit = SUGGEST_SLOTS
+) {
+  // skip whole day if blackout
+  if (await getBlackoutForDate(dateStr)) return [];
+
+  const hours = await getHoursForDate(dateStr);
+  if (!hours) return [];
+
+  const { open, close } = hours;
+
+  const openMins = hhmmToMinutes(open);
+  const closeMins = hhmmToMinutes(close);
+
   let t = Math.max(hhmmToMinutes(startHHMM), openMins);
+  const slots = [];
 
-  const suggestions = [];
-
-  while (t + durationMin <= closeMins && suggestions.length < limit) {
+  while (t + durationMin <= closeMins && slots.length < limit) {
     const hhmm = minutesToHHMM(t);
 
-    // blackout already checked for that whole date
     const full = await isSlotFull(dateStr, hhmm);
-
     if (!full) {
-      suggestions.push(hhmm);
+      slots.push(hhmm);
     }
 
-    t += SLOT_STEP_MINUTES;
+    t += SLOT_STEP_MINUTES; // e.g. 15 minutes
   }
 
-  return suggestions;
+  return slots;
 }
 
 // Routes
@@ -242,6 +254,9 @@ app.post("/chatbot", async (req, res) => {
           conflict = await isSlotFull(booking.date, booking.time);
 
           if (!conflict) {
+            // Link customer
+            const customerId = await findOrCreateCustomer(booking.name);
+            booking.customerId = customerId;
             // Happy path booking
             saved = await insertBooking(booking);
             reply = `✅ I've booked a ${booking.service} for ${booking.name} on ${booking.date} at ${booking.time}.`;
