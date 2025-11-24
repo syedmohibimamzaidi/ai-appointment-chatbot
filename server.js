@@ -58,6 +58,38 @@ function minutesToHHMM(mins) {
   return `${h}:${m}`;
 }
 
+// --- phone validation helper ---
+function validatePhone(raw) {
+  if (!raw) {
+    return {
+      valid: false,
+      normalized: "",
+      message:
+        "The phone number you provided seems invalid. Please enter a 10-digit phone number.",
+    };
+  }
+
+  // Keep only digits
+  const digits = String(raw).replace(/\D/g, "");
+
+  // Basic Canadian/US style: exactly 10 digits
+  if (digits.length !== 10) {
+    return {
+      valid: false,
+      normalized: "",
+      message:
+        "The phone number you provided seems invalid. Please enter a 10-digit phone number.",
+    };
+  }
+
+  // If you want, you can format it nicely later (e.g. (587) 123-4567)
+  return {
+    valid: true,
+    normalized: digits,
+    message: "",
+  };
+}
+
 function extractJsonBlock(reply) {
   const m = reply.match(/```json\s*([\s\S]*?)\s*```/i);
   if (!m) return null;
@@ -75,6 +107,7 @@ function toBookingObject(payload) {
     service: (payload?.service || "").trim(),
     date: (payload?.date || "").trim(),
     time: (payload?.time || "").trim(),
+    phone: (payload?.phone || "").trim(),
     createdAt: new Date().toISOString(),
   };
 }
@@ -195,8 +228,29 @@ app.post("/chatbot", async (req, res) => {
     let conflict = false;
     let suggestions = [];
 
+    // booking is visible for the whole handler now
+    let booking = null;
+
     if (payload?.intent === "book") {
       const booking = toBookingObject(payload);
+
+      if (booking.phone) {
+        const phoneValidation = validatePhone(booking.phone);
+        console.log("phone validation:", booking.phone, phoneValidation);
+
+        if (!phoneValidation.valid) {
+          return res.json({
+            reply: phoneValidation.message,
+            parsed: payload,
+            saved: null,
+            conflict: false,
+            suggestions: [],
+          });
+        }
+
+        // Store normalized digits
+        booking.phone = phoneValidation.normalized;
+      }
 
       if (isComplete(booking)) {
         // 1) Check hours and blackout separately
@@ -255,7 +309,10 @@ app.post("/chatbot", async (req, res) => {
 
           if (!conflict) {
             // Link customer
-            const customerId = await findOrCreateCustomer(booking.name);
+            const customerId = await findOrCreateCustomer(
+              booking.name,
+              booking.phone
+            );
             booking.customerId = customerId;
             // Happy path booking
             saved = await insertBooking(booking);

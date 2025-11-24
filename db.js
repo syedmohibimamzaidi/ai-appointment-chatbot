@@ -37,31 +37,43 @@ export function get(sql, params = []) {
   });
 }
 
-// Find an existing customer by name (simple v1 logic)
-export async function findCustomerByName(name) {
-  return get(`SELECT * FROM customers WHERE name = ?`, [name]);
+// Find an existing customer by name + phone (simple v1 logic)
+export async function findCustomer(name, phone) {
+  if (phone) {
+    // exact match on name + phone
+    return get(`SELECT * FROM customers WHERE name = ? AND phone = ?`, [
+      name,
+      phone,
+    ]);
+  }
+
+  // no phone provided -> fall back to name + NULL phone
+  return get(`SELECT * FROM customers WHERE name = ? AND phone IS NULL`, [
+    name,
+  ]);
 }
 
 // Create a new customer
-export async function createCustomer(name) {
+export async function createCustomer(name, phone) {
   const id = randomUUID();
   const createdAt = new Date().toISOString();
 
   await run(
     `INSERT INTO customers (id, name, phone, created_at)
      VALUES (?, ?, ?, ?)`,
-    [id, name, null, createdAt]
+    [id, name, phone || null, createdAt]
   );
 
-  return { id, name, created_at: createdAt };
+  return { id, name, phone: phone || null, created_at: createdAt };
 }
 
-export async function findOrCreateCustomer(name) {
-  // 1) Try to find
-  const existing = await findCustomerByName(name);
+// Find or create customer and return their id
+export async function findOrCreateCustomer(name, phone) {
+  // 1) Try to find existing
+  const existing = await findCustomer(name, phone);
   if (existing) return existing.id;
 
-  // 2) Otherwise create
-  const created = await createCustomer(name);
+  // 2) Otherwise, create new
+  const created = await createCustomer(name, phone);
   return created.id;
 }
