@@ -91,7 +91,6 @@ Center-aligned send button
 
 Fully responsive
 
-(Your UI is extremely polished — this section highlights that professionally.)
 
 🛠️ Tech Stack
 
