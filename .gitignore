@@ -1,11 +1,15 @@
 # Node modules
 node_modules/
+client/node_modules/
 
 # Environment variables
 .env
 
 # SQLite database
 app.db
+
+# Client build output
+client/dist/
 
 # Logs
 logs/

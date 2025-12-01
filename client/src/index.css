@@ -1,0 +1,324 @@
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: radial-gradient(circle at top, #111827 0%, #020617 45%, #000 100%);
+  color: #e5e7eb;
+}
+
+/* Layout ----------------------------------------------------------------- */
+
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.chat-card {
+  width: 100%;
+  max-width: 960px;
+  height: 620px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  padding: 1.5rem 1.5rem 1.25rem;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow:
+    0 24px 80px rgba(15, 23, 42, 0.9),
+    0 0 0 1px rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(18px);
+}
+
+/* Header ----------------------------------------------------------------- */
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+  margin-bottom: 1rem;
+}
+
+.chat-header h1 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.chat-header p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+.chat-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #a7f3d0;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.9);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+}
+
+/* Chat window ------------------------------------------------------------ */
+
+.chat-window {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 0.25rem 0.75rem 0;
+  margin-right: 0.25rem;
+}
+
+/* Scrollbar styling (Chrome) */
+.chat-window::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-window::-webkit-scrollbar-thumb {
+  background: rgba(55, 65, 81, 0.9);
+  border-radius: 999px;
+}
+
+/* Message rows & bubbles ------------------------------------------------- */
+
+.message-row {
+  display: flex;
+  margin-bottom: 0.6rem;
+}
+
+.message-row--bot {
+  justify-content: flex-start;
+  opacity: 0.85;
+}
+
+.message-row--user {
+  justify-content: flex-end;
+}
+
+.bubble {
+  position: relative;
+  max-width: 72%;
+  padding: 0.75rem 1rem;
+  border-radius: 18px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  animation: bubbleIn 0.22s ease-out;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(4px);
+}
+
+/* Animation */
+@keyframes bubbleIn {
+  0% {
+    transform: translateY(6px) scale(0.98);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(0px) scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+.bot-bubble {
+  background:
+    radial-gradient(circle at top left, rgba(120, 140, 180, 0.06), transparent 60%),
+    linear-gradient(135deg, #0b1220, #020617);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  color: #f8fafc;  
+  padding: 0.9rem 1.15rem 0.9rem 1.15rem;                              
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.9),
+    0 0 0 1px rgba(15, 23, 42, 0.7);              
+}
+
+.user-bubble {
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+  color: white;
+  box-shadow: 0 4px 14px rgba(30, 100, 255, 0.25);
+}
+
+.bubble-error {
+  border-color: #f97316;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.5);
+}
+
+.bubble p {
+  margin: 0 0 0.2rem;
+}
+
+.bubble-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.bubble-time {
+  font-size: 0.75rem;
+  color: rgba(210, 225, 255, 0.82);  /* brighter, cooler, matches glow */
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+.bubble-status {
+  font-size: 0.8rem;
+  color: rgba(210, 225, 255, 0.82);
+}
+
+/* Typing indicator ------------------------------------------------------- */
+
+.typing-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 0.6rem;
+}
+
+.typing-bubble {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.4rem 0.7rem;
+}
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9ca3af;
+  animation: typing 1s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.12s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+@keyframes typing {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+/* Input bar -------------------------------------------------------------- */
+
+.input-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.input-field {
+  flex: 1;
+  resize: none;
+  padding: 0.6rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(55, 65, 81, 0.95);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  font-size: 0.9rem;
+  outline: none;
+  max-height: 120px;
+}
+
+.input-field::placeholder {
+  color: #6b7280;
+}
+
+.input-field:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.75);
+}
+
+.send-button {
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #f9fafb;
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.45);
+  transition:
+    transform 0.08s ease-out,
+    box-shadow 0.08s ease-out,
+    filter 0.08s;
+}
+
+.send-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.send-button:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+}
+
+textarea {
+  resize: none !important;
+  overflow-y: auto;
+  scrollbar-width: none;        /* Firefox: hide scrollbar */
+}
+
+/* Chrome / Edge / Safari: hide scrollbar + buttons */
+textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+textarea::-webkit-scrollbar-button,
+textarea::-webkit-resizer {
+  display: none;
+}

@@ -72,21 +72,30 @@ function validatePhone(raw) {
   // Keep only digits
   const digits = String(raw).replace(/\D/g, "");
 
-  // Basic Canadian/US style: exactly 10 digits
-  if (digits.length !== 10) {
+  // If it looks like +1XXXXXXXXXX or 1XXXXXXXXXX (11 digits, leading 1)
+  if (digits.length === 11 && digits.startsWith("1")) {
     return {
-      valid: false,
-      normalized: "",
-      message:
-        "The phone number you provided seems invalid. Please enter a 10-digit phone number.",
+      valid: true,
+      normalized: digits.slice(1), // drop the leading country code
+      message: "",
     };
   }
 
-  // If you want, you can format it nicely later (e.g. (587) 123-4567)
+  // Plain North American style: exactly 10 digits
+  if (digits.length === 10) {
+    return {
+      valid: true,
+      normalized: digits,
+      message: "",
+    };
+  }
+
+  // Anything else is invalid
   return {
-    valid: true,
-    normalized: digits,
-    message: "",
+    valid: false,
+    normalized: "",
+    message:
+      "The phone number you provided seems invalid. Please enter a 10-digit number (with or without +1).",
   };
 }
 
@@ -339,7 +348,57 @@ app.post("/chatbot", async (req, res) => {
         }
       }
     }
+    // Handle phone-only clarify
+    if (payload?.intent === "clarify") {
+      const phoneOnly =
+        payload.phone &&
+        payload.phone.trim() !== "" &&
+        !payload.name &&
+        !payload.service &&
+        !payload.date &&
+        !payload.time;
 
+      if (phoneOnly) {
+        const phoneValidation = validatePhone(payload.phone);
+        console.log("phone-only validation:", payload.phone, phoneValidation);
+
+        if (!phoneValidation.valid) {
+          return res.json({
+            reply: phoneValidation.message,
+            parsed: payload,
+            saved: null,
+            conflict: false,
+            suggestions: [],
+          });
+        }
+
+        const normalized = phoneValidation.normalized;
+
+        // Find the most recent customer without a phone number
+        const latestCustomer = await get(
+          `SELECT id FROM customers
+           WHERE phone IS NULL OR phone = ''
+           ORDER BY created_at DESC
+           LIMIT 1`
+        );
+
+        if (latestCustomer && latestCustomer.id) {
+          await run(
+            `UPDATE customers
+             SET phone = ?
+             WHERE id = ?`,
+            [normalized, latestCustomer.id]
+          );
+
+          reply =
+            "Thanks, I've added your phone number to your latest appointment.";
+        } else {
+          // No customer to attach to – keep it polite and harmless
+          reply =
+            "Thanks for your phone number. I'll use it for your next appointment booking.";
+        }
+      }
+    }
     // Send response
     res.json({ reply, parsed: payload || null, saved, conflict, suggestions });
   } catch (error) {

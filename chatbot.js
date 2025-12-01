@@ -3,8 +3,28 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Dynamically get today's date and your local timezone
-const TODAY_ISO = new Date().toISOString().slice(0, 10);
+// Get system timezone
 const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+// Convert today's date to local YYYY-MM-DD
+const formatLocalDate = () => {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: LOCAL_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const parts = formatter.formatToParts(now);
+  const year = parts.find((p) => p.type === "year").value;
+  const month = parts.find((p) => p.type === "month").value;
+  const day = parts.find((p) => p.type === "day").value;
+
+  return `${year}-${month}-${day}`;
+};
+
+const TODAY_ISO = formatLocalDate();
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -39,12 +59,16 @@ export async function getChatResponse(prompt) {
             "- Use 24-hour time (HH:MM)",
             "- Use ISO date (YYYY-MM-DD)",
             "- If user says 'tomorrow', resolve it using today's date above.",
+            "- If the user only adds NEW information (for example, just a phone number), ONLY fill that field in the JSON and leave other fields as empty strings.",
+            "- Never invent a service, date, or time just to fill the JSON. If you aren't sure, leave it as an empty string.",
+            "- Do not copy example values like 'nails' or a day of week unless the user actually said them.",
+            "- Do NOT say that the user has already provided a detail (like their phone number) unless the current message explicitly says something like 'again' or 'same as before'. Just thank them and confirm what you received.",
             '- "phone" is the customer phone number as a string, or "" if the user hasn’t provided it yet.',
             "- Never say you can’t book appointments — you CAN record them.",
           ].join(" "),
         },
 
-        // Few-shot example 1
+        // Few-shot example 1: full booking
         {
           role: "user",
           content: "Book a haircut tomorrow at 3 PM for Mohib",
@@ -55,15 +79,26 @@ export async function getChatResponse(prompt) {
             'Booked a haircut for Mohib tomorrow at 15:00. If that’s right, I’ll confirm it.\n\n```json\n{ "intent": "book", "name": "Mohib", "service": "haircut", "date": "YYYY-MM-DD", "time": "15:00" }\n```',
         },
 
-        // Few-shot example 2
+        // Few-shot example 2: missing time
         {
           role: "user",
-          content: "Can I get nails done on Friday?",
+          content: "Can I get a haircut on Friday?",
         },
         {
           role: "assistant",
           content:
-            'Sure — what time would you like on Friday?\n\n```json\n{ "intent": "clarify", "name": "", "service": "nails", "date": "YYYY-MM-DD", "time": "" }\n```',
+            'Sure — what time would you like on Friday?\n\n```json\n{ "intent": "clarify", "name": "", "service": "haircut", "date": "YYYY-MM-DD", "time": "", "phone": "" }\n```',
+        },
+
+        // Few-shot example 3: phone-only message
+        {
+          role: "user",
+          content: "Here's my phone number: +1 825 888 5611",
+        },
+        {
+          role: "assistant",
+          content:
+            'Thanks for providing your phone number. I\'ll add it to your appointment.\n\n```json\n{ "intent": "clarify", "name": "", "service": "", "date": "", "time": "", "phone": "+1 825 888 5611" }\n```',
         },
         { role: "user", content: prompt },
       ],
