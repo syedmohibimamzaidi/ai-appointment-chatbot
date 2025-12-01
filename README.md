@@ -63,7 +63,7 @@ Automatic customer matching or creation
 
 📱 Phone Number Validation & Normalization
 
-Accepts multiple formats (+1 825 888 5611, 825-888-5611, 8258885611, etc.)
+Accepts multiple formats (+1 234 567 8910, 234-567-8910, 2345678910, etc.)
 
 Strips non-digits
 
