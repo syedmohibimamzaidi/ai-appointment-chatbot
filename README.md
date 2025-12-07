@@ -238,6 +238,4 @@ Multi-step clarifications
 
 🧑‍💻 Author
 
-Mohib Zaidi
-AI & Full-Stack Developer
-🇨🇦 University of Alberta
+Mohib Zaidi - AI & Full-Stack Developer 🇨🇦 - University of Alberta
