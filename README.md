@@ -1,241 +1,233 @@
-🧠 AI Appointment Chatbot
-Intelligent salon appointment booking with natural language understanding, Node.js backend, SQLite, and a polished modern UI.
+# AI Appointment Chatbot
 
+AI Appointment Chatbot is a full-stack conversational booking system that allows users to schedule salon services using natural language. The application combines a React frontend, a Node.js/Express backend, a SQLite database, and OpenAI APIs to interpret user requests and manage appointment scheduling.
 
-📌 Overview
+The system demonstrates how conversational AI can be integrated with real backend business logic to automate service booking workflows.
 
-AI Appointment Chatbot is a full-stack appointment booking system that lets users schedule salon services through a natural conversational interface.
-It uses OpenAI GPT-based language parsing, a Node.js + Express backend, SQLite database, and a fully custom-designed React UI with a modern glowing aesthetic.
+---
 
-This project showcases:
+## Overview
 
-Real-time conversational flows
+The AI Appointment Chatbot allows users to book appointments through a conversational interface rather than traditional forms. Users can describe their request naturally, and the system extracts structured booking information such as the service requested, date, time, and customer details.
 
-Advanced date/time/service extraction
+The backend validates requests against scheduling rules such as business hours, blackout days, and time-slot capacity before confirming the booking.
 
-Slot availability & business-hours logic
+Key capabilities include:
 
-Phone number validation & normalization
+- Natural language appointment booking
+- Automatic extraction of booking details (name, service, date, time)
+- Business hours validation
+- Blackout day handling
+- Time-slot conflict detection
+- Alternative time suggestions when conflicts occur
+- Phone number validation and normalization
+- Persistent booking storage with SQLite
 
-Conflict resolution with suggested time slots
+---
 
-Polished production-quality front-end
+## Project Goals
 
-Clean backend architecture & database modeling
+This project was built to demonstrate:
 
-It is designed as a portfolio-ready system demonstrating full-stack engineering, UX design, and AI-assisted workflows.
+- Full-stack application development
+- Conversational AI integration using the OpenAI API
+- Backend scheduling systems and conflict resolution
+- Database design and validation logic
+- Modern frontend UI design
 
-✨ Features
-🧠 Natural Language Booking
+---
 
-Users can type messages like:
+## Features
 
-“Book a haircut for Sagar tomorrow at 4pm.”
-“Can I come earlier? Maybe 1:15?”
+### Natural Language Booking
 
-The AI automatically extracts:
+Users can send requests such as:
 
-Customer name
+> "Book a haircut for Mohib tomorrow at 2pm."
 
-Service (haircut, manicure, waxing, etc.)
+The system extracts structured information including:
 
-Date (supports “tomorrow”, “this Friday”, exact dates)
+- Customer name
+- Service requested
+- Date
+- Time
+- Phone number (if provided)
+- User intent (book, clarify, modify)
 
-Time
+The backend then validates the request and confirms the appointment or suggests alternatives if conflicts occur.
 
-Phone number
+---
 
-Intent (book / modify / clarify)
+### Backend Scheduling Logic
 
-🗂 Robust Backend Scheduling Logic
+The backend implements several layers of validation to ensure bookings follow real-world constraints:
 
-Includes:
+- Business hours enforcement
+- Blackout date handling (holidays or closed days)
+- Slot capacity limits
+- Automatic alternative slot suggestions
+- Automatic customer record creation or lookup
 
-Business hours enforcement
+This allows the chatbot to behave like a real scheduling engine rather than a simple conversational interface.
 
-Blackout days (holidays, closed days)
+---
 
-Time-slot capacity checks
+### Phone Number Validation
 
-Automatic conflict suggestions
+Phone numbers provided by users are validated and normalized before being stored.
 
-Automatic customer matching or creation
+The system:
 
-📱 Phone Number Validation & Normalization
+- Accepts multiple formats
+- Removes non-digit characters
+- Validates a 10-digit North American number
+- Returns helpful error messages for invalid input
 
-Accepts multiple formats (+1 234 567 8910, 234-567-8910, 2345678910, etc.)
+---
 
-Strips non-digits
+### User Interface
 
-Ensures a valid 10-digit number
+The frontend is built using React and designed as a modern chat interface.
 
-Gives helpful error messages
+UI features include:
 
-🎨 High-Quality UI/UX
+- Message bubbles for user and assistant responses
+- Timestamped messages
+- Typing indicator
+- Online status indicator
+- Smooth animations and transitions
+- Responsive layout
 
-The frontend includes:
+The design focuses on clarity and usability while maintaining a polished visual style.
 
-Beautiful glowing gradient user bubbles
+---
 
-Semi-glassmorphic bot bubbles
+## Technology Stack
 
-Clean timestamp design
+### Frontend
 
-Smooth animations
+- React
+- Vite
+- Custom CSS
 
-Typing indicator
+### Backend
 
-Online status indicator
+- Node.js
+- Express
+- OpenAI API
 
-Center-aligned send button
+### Database
 
-Fully responsive
+- SQLite
 
+---
 
-🛠️ Tech Stack
+## Database Schema
 
-Frontend
+The SQLite database stores customer and appointment information.
 
-React
+Main tables include:
 
-Vite
+- `customers` – customer information and phone numbers
+- `appointments` – scheduled bookings
+- `hours` – configured business hours
+- `blackouts` – closed dates and holidays
 
-Custom CSS (no UI libraries)
+---
 
-Animated message bubbles
+## Getting Started
 
-Custom chat window design
+### Clone the repository
 
-Backend
-
-Node.js
-
-Express
-
-OpenAI GPT API
-
-SQLite3
-
-Knex-style custom database helpers (insert, find, validate)
-
-Database
-
-SQLite with the following tables:
-
-customers
-
-bookings
-
-services
-
-business_hours
-
-blackout_days
-
-📸 Screenshots
-
-To be added later...
-
-Example layout:
-
-/screenshots
-   ui-main.png
-   ui-bot-reply.png
-   ui-conflict.png
-   ui-suggestion.png
-
-🚀 Getting Started
-1. Clone the repository
+```bash
 git clone https://github.com/syedmohibimamzaidi/ai-appointment-chatbot.git
 cd ai-appointment-chatbot
+```
 
-2. Install dependencies
+### Install dependencies
+
+```bash
 npm install
+```
 
-3. Add your API key
+### Configure environment variables
 
-Create a .env file:
+Create a `.env` file in the project root:
 
-OPENAI_API_KEY=your_key_here
+```env
+OPENAI_API_KEY=your_api_key_here
+```
 
-4. Initialize the database
+### Initialize the database
+
+```bash
 node seed.js
+```
 
-5. Run the backend
+### Start the backend server
+
+```bash
 node server.js
+```
 
-6. Run the frontend
+### Run the frontend
+
+```bash
 cd client
 npm install
 npm run dev
+```
 
-🧩 Architecture
-Frontend → Backend → AI → Backend → SQLite → Frontend
+---
 
-User sends a chat message
+## System Architecture
 
-Frontend sends the text to /chatbot
+The request flow follows this sequence:
 
-Backend sends a structured prompt to GPT
+```text
+Frontend → Backend → OpenAI API → Backend → SQLite → Frontend
+```
 
-GPT responds with:
+1. The user sends a message through the chat interface.
+2. The frontend sends the message to the `/chatbot` API endpoint.
+3. The backend forwards the prompt to the OpenAI API for structured intent extraction.
+4. The backend validates the extracted booking data.
+5. If valid, the booking is stored in the SQLite database.
+6. The result is returned to the frontend as a chat response.
 
-A reply to show to the user
+The backend response includes:
 
-A JSON block describing intent, name, date, time, phone
+- `reply` – message shown to the user
+- `parsed` – extracted structured booking data
+- `saved` – booking record (if created)
+- `conflict` – whether a scheduling conflict occurred
+- `suggestions` – alternative available time slots
 
-Backend validates & processes the JSON
+---
 
-Backend inserts or updates a booking
+## Production Extensions
 
-Backend returns the result with:
+The system architecture allows several integrations for real-world deployment:
 
-reply
+- **Email confirmations (SendGrid / AWS SES)**  
+  Send automatic confirmation emails after bookings are created.
 
-parsed
+- **SMS notifications (Twilio)**  
+  Send SMS confirmations and appointment reminders to customers.
 
-saved
+- **Admin dashboard**  
+  Interface for managing bookings, services, and blackout dates.
 
-conflict
+- **Calendar export**  
+  Generate `.ics` files compatible with Google Calendar or Outlook.
 
-suggestions
+- **Rescheduling and cancellation through chat**  
+  Extend the conversational interface to support booking modifications.
 
-This creates a real AI-driven booking engine instead of a simple chatbot.
+---
 
-📬 Future Enhancements
+## Author
 
-Here are improvements planned (or possible):
-
-✉ Email booking confirmation (SendGrid)
-
-Send a confirmation email to the user after successful booking.
-
-📱 SMS notifications (Twilio / Nexmo)
-
-Optional upgrade for real salons (costs money).
-
-🖥 Admin Dashboard
-
-View bookings
-
-Add blackout days
-
-Add services & durations
-
-View time-slot heatmaps
-
-📅 Calendar Export
-
-Generate .ics files for Google Calendar / Outlook.
-
-🧠 Smarter AI
-
-Detect rescheduling
-
-Support cancellations
-
-Multi-step clarifications
-
-🧑‍💻 Author
-
-Mohib Zaidi - AI & Full-Stack Developer 🇨🇦 - University of Alberta
+**Mohib Zaidi**  
+Software Engineering Co-op Student  
+University of Alberta
