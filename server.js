@@ -27,7 +27,7 @@ app.use(express.json());
 async function slotCount(date, time) {
   const row = await get(
     `SELECT COUNT(*) AS n FROM appointments WHERE date = ? AND time = ?`,
-    [date, time]
+    [date, time],
   );
   return row.n;
 }
@@ -40,7 +40,7 @@ async function insertBooking(b) {
   await run(
     `INSERT INTO appointments (id, customer_id, name, service, date, time, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [b.id, b.customerId, b.name, b.service, b.date, b.time, b.createdAt]
+    [b.id, b.customerId, b.name, b.service, b.date, b.time, b.createdAt],
   );
   return b;
 }
@@ -50,12 +50,29 @@ function hhmmToMinutes(hhmm) {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
 }
+
 function minutesToHHMM(mins) {
   const h = Math.floor(mins / 60)
     .toString()
     .padStart(2, "0");
   const m = (mins % 60).toString().padStart(2, "0");
   return `${h}:${m}`;
+}
+
+function formatDisplayTime(time24) {
+  const [hour, minute] = time24.split(":").map(Number);
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function formatDisplayDate(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 // --- phone validation helper ---
@@ -187,7 +204,7 @@ async function nextAvailableSlots(
   dateStr,
   startHHMM,
   durationMin,
-  limit = SUGGEST_SLOTS
+  limit = SUGGEST_SLOTS,
 ) {
   // skip whole day if blackout
   if (await getBlackoutForDate(dateStr)) return [];
@@ -229,7 +246,7 @@ app.post("/chatbot", async (req, res) => {
     console.log(
       "\n💬 AI Chatbot Reply:\n---------------------\n",
       reply,
-      "\n---------------------"
+      "\n---------------------",
     );
 
     const payload = extractJsonBlock(reply);
@@ -265,7 +282,7 @@ app.post("/chatbot", async (req, res) => {
         // 1) Check hours and blackout separately
         const withinHours = await isWithinBusinessHours(
           booking.date,
-          booking.time
+          booking.time,
         );
         const blackout = await findBlackout(booking.date);
 
@@ -294,7 +311,7 @@ app.post("/chatbot", async (req, res) => {
             booking.date,
             booking.time,
             SERVICE_DURATION_MIN,
-            SUGGEST_SLOTS
+            SUGGEST_SLOTS,
           );
 
           const hours = await getHoursForDate(booking.date);
@@ -320,19 +337,23 @@ app.post("/chatbot", async (req, res) => {
             // Link customer
             const customerId = await findOrCreateCustomer(
               booking.name,
-              booking.phone
+              booking.phone,
             );
             booking.customerId = customerId;
             // Happy path booking
             saved = await insertBooking(booking);
-            reply = `✅ I've booked a ${booking.service} for ${booking.name} on ${booking.date} at ${booking.time}.`;
+
+            const prettyTime = formatDisplayTime(booking.time);
+            const prettyDate = formatDisplayDate(booking.date);
+
+            reply = `✅ Appointment confirmed!\n\nYour ${booking.service} for ${booking.name} has been booked for ${prettyDate} at ${prettyTime}.`;
           } else {
             // Slot full -> suggest alternatives (no need to mention hours here)
             suggestions = await nextAvailableSlots(
               booking.date,
               booking.time,
               SERVICE_DURATION_MIN,
-              SUGGEST_SLOTS
+              SUGGEST_SLOTS,
             );
 
             const list = suggestions.length
@@ -379,7 +400,7 @@ app.post("/chatbot", async (req, res) => {
           `SELECT id FROM customers
            WHERE phone IS NULL OR phone = ''
            ORDER BY created_at DESC
-           LIMIT 1`
+           LIMIT 1`,
         );
 
         if (latestCustomer && latestCustomer.id) {
@@ -387,7 +408,7 @@ app.post("/chatbot", async (req, res) => {
             `UPDATE customers
              SET phone = ?
              WHERE id = ?`,
-            [normalized, latestCustomer.id]
+            [normalized, latestCustomer.id],
           );
 
           reply =
@@ -433,7 +454,7 @@ app.get("/availability", async (req, res) => {
     return res.status(400).json({ error: "date and time required" });
   const taken = await get(
     `SELECT 1 FROM appointments WHERE date = ? AND time = ?`,
-    [date, time]
+    [date, time],
   );
   res.json({ available: !taken });
 });

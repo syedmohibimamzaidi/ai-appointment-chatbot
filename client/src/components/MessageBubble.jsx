@@ -16,6 +16,10 @@ export default function MessageBubble({
     });
   }
 
+  function stripJson(text) {
+    return text.replace(/```json[\s\S]*?```/g, "").trim();
+  }
+
   return (
     <div
       className={`message-row ${
@@ -27,7 +31,7 @@ export default function MessageBubble({
           isUser ? "user-bubble" : "bot-bubble"
         } ${isError ? "bubble-error" : ""}`}
       >
-        <p>{text}</p>
+        <p>{stripJson(text)}</p>
 
         <div className="bubble-meta">
           {timeLabel && <span className="bubble-time">{timeLabel}</span>}
