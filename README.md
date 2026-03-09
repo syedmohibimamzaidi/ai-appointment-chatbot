@@ -25,6 +25,20 @@ Key capabilities include:
 
 ---
 
+## Screenshots
+
+### Successful Booking
+The assistant interprets natural language and confirms the appointment.
+
+![Successful Booking](screenshots/successful-booking.png)
+
+### Conflict Detection
+The system detects scheduling conflicts and suggests the nearest available time slots.
+
+![Conflict Detection](screenshots/conflict-detection.png)
+
+---
+
 ## Project Goals
 
 This project was built to demonstrate:
