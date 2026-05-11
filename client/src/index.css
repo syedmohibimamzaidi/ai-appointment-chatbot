@@ -531,19 +531,36 @@ textarea::-webkit-resizer {
 /* Responsive: small screens (phones) ----------------------------------- */
 
 @media (max-width: 600px) {
-  /* RU1 — reduce shell padding so bubbles aren't crushed */
-  .app-shell {
-    padding: 0.75rem;
+  /* Lock the page itself to the visible viewport — no body scroll, no
+     elastic bounce. Keeps the chat card aligned to the real viewport,
+     not the iOS "tall" 100vh that hides under the URL bar. */
+  html,
+  body,
+  #root {
+    height: 100dvh;
+    overflow: hidden;
   }
 
-  /* RU1 + RU5 — tighter card padding and matching height calc */
+  /* RU1 — reduce shell padding; add iOS safe-area insets so we don't sit
+     under the notch or the home indicator. */
+  .app-shell {
+    padding: calc(0.75rem + env(safe-area-inset-top)) 0.75rem
+      calc(0.75rem + env(safe-area-inset-bottom)) 0.75rem;
+    /* Keep the shell exactly the size of the visible viewport */
+    min-height: 100dvh;
+    height: 100dvh;
+  }
+
+  /* RU1 + RU5 — card fills the shell. Using 100% (not vh) means it tracks
+     the safe-area-adjusted shell instead of fighting with iOS chrome. */
   .chat-card {
-    height: calc(100vh - 1.5rem);
+    height: 100%;
+    max-height: 100%;
     padding: 1rem 1rem 0.75rem;
     border-radius: 18px;
   }
 
-  /* RU4 — give the subtitle room; hide it below 380px */
+  /* RU4 — header sizing */
   .chat-header h1 {
     font-size: 1.05rem;
   }
@@ -551,12 +568,12 @@ textarea::-webkit-resizer {
     font-size: 0.78rem;
   }
 
-  /* RU2 — let bubbles breathe across the narrower viewport */
+  /* RU2 — bubbles can use more width on narrow screens */
   .bubble {
     max-width: 88%;
   }
 
-  /* RU3 — booking card must fit even on iPhone SE */
+  /* RU3 — booking card fits inside the bubble on any phone */
   .bubble-booking {
     max-width: 100%;
     padding: 0.85rem 0.95rem;
@@ -568,9 +585,28 @@ textarea::-webkit-resizer {
     gap: 0.65rem;
   }
 
-  /* RU8 — Date row no longer needs to span; reset the special rule */
+  /* RU8 — reset the Date-spans-both rule when there's only one column */
   .booking-card__item:nth-child(2) {
     grid-column: auto;
+  }
+
+  /* Prevent iOS auto-zoom on focus by ensuring text inputs are >=16px.
+     Also keep the textarea from triggering horizontal scroll on long words. */
+  .input-field {
+    font-size: 16px;
+  }
+
+  /* Give the input bar a touch more breathing room above the home indicator
+     (safe-area is already in the shell, but adding margin here ensures the
+     row never visually touches the card's bottom edge). */
+  .input-bar {
+    padding-top: 0.6rem;
+    margin-top: 0.35rem;
+  }
+
+  /* Belt-and-suspenders: prevent any horizontal overflow on small phones */
+  body {
+    overflow-x: hidden;
   }
 }
 
