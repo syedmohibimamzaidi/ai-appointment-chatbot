@@ -1,16 +1,14 @@
 # AI Appointment Chatbot
 
-AI Appointment Chatbot is a full-stack conversational booking system that allows users to schedule salon services using natural language. The application combines a React frontend, a Node.js/Express backend, a SQLite database, and OpenAI APIs to interpret user requests and manage appointment scheduling.
+AI Appointment Chatbot is a full-stack conversational booking system that allows users to schedule salon services using natural language. The application combines an LLM-powered conversational interface with deterministic backend business logic to create a reliable appointment booking workflow.
 
-The system demonstrates how conversational AI can be integrated with real backend business logic to automate service booking workflows.
+The system demonstrates how conversational AI can be integrated with real backend business logic while maintaining validation, state management, and production-aware frontend behavior.
 
 ---
 
 ## Overview
 
-The AI Appointment Chatbot allows users to book appointments through a conversational interface rather than traditional forms. Users can describe their request naturally, and the system extracts structured booking information such as the service requested, date, time, and customer details.
-
-The backend validates requests against scheduling rules such as business hours, blackout days, and time-slot capacity before confirming the booking.
+The AI Appointment Chatbot allows users to book appointments through a conversational interface rather than traditional forms. Users can describe services naturally (for example: "Book a haircut tomorrow at 9AM"), while the backend validates requests against scheduling rules before confirming the booking.
 
 Key capabilities include:
 
@@ -20,223 +18,360 @@ Key capabilities include:
 - Blackout day handling
 - Time-slot conflict detection
 - Alternative time suggestions when conflicts occur
-- Phone number validation and normalization
+- Confirmation-gated booking flow
 - Persistent booking storage with SQLite
+- Mobile-responsive conversational UI
+- Cross-device session handling support
+- Structured booking summary cards
+- Interactive suggestion chips
+- Typing indicators and animated chat responses
 
 ---
 
 ## Screenshots
 
+### Initial Booking Flow
+
+![Initial Booking Flow](./screenshots/Initial%20Booking%20Flow.png)
+
 ### Successful Booking
-The assistant interprets natural language and confirms the appointment.
 
-![Successful Booking](screenshots/successful-booking.png)
+![Successful Booking](./screenshots/Booking%20Confirmed.png)
 
-### Conflict Detection
-The system detects scheduling conflicts and suggests the nearest available time slots.
+### Second Booking Attempt
 
-![Conflict Detection](screenshots/conflict-detection.png)
+![Second Booking Attempt](./screenshots/Second%20Booking%20Attempt.png)
+
+### Conflict Detection + Smart Suggestions
+
+![Conflict Detection](./screenshots/Conflict%20detection%20%2B%20Smart%20suggestions.png)
+
+### Mobile Responsive Interface
+
+![Mobile UI](./screenshots/Responsive%20Mobile%20Experience.PNG)
 
 ---
 
-## Project Goals
+## Tech Stack
 
-This project was built to demonstrate:
+### Frontend
+- React
+- Vite
+- CSS3
+- Responsive mobile-first layout
 
-- Full-stack application development
-- Conversational AI integration using the OpenAI API
-- Backend scheduling systems and conflict resolution
-- Database design and validation logic
-- Modern frontend UI design
+### Backend
+- Node.js
+- Express.js
+- SQLite
+- OpenAI API
+
+### Deployment
+- Vercel (Frontend)
+- Render (Backend)
 
 ---
 
 ## Features
 
-### Natural Language Booking
+### Conversational Booking Flow
 
-Users can send requests such as:
+Users can interact naturally with the chatbot instead of filling traditional forms.
 
-> "Book a haircut for Mohib tomorrow at 2pm."
+Examples:
+- "Book a haircut tomorrow at 9AM"
+- "Can I get a manicure on Friday afternoon?"
+- "Let's do 10:30 instead"
 
-The system extracts structured information including:
+The AI extracts booking information while the backend validates all business rules.
 
-- Customer name
-- Service requested
+---
+
+### Conflict Detection
+
+The backend prevents overbooking by checking slot capacity before confirming appointments.
+
+If a requested slot is unavailable, the chatbot automatically suggests nearby available times.
+
+Example:
+- Requested: 9:00 AM
+- Suggested alternatives:
+  - 9:30 AM
+  - 10:00 AM
+  - 10:30 AM
+
+---
+
+### Confirmation-Gated Booking
+
+Appointments are never written directly to the database after extraction.
+
+Instead, the system:
+1. Collects booking information
+2. Generates a structured booking summary
+3. Waits for explicit user confirmation
+4. Saves only after a confirmed "yes"
+
+This prevents accidental bookings and creates a safer conversational workflow.
+
+---
+
+### Responsive Mobile UI
+
+The frontend was specifically optimized for mobile Safari and iOS behavior.
+
+Features include:
+- Dynamic viewport height (`100dvh`)
+- Safe-area handling using `env(safe-area-inset-*)`
+- iOS input zoom prevention
+- Keyboard-aware layout adjustments
+- Scrollable chat history
+- Mobile-safe input positioning
+
+---
+
+### Session Persistence Across Devices
+
+Desktop browsers typically support cookie-based sessions normally.
+
+Mobile Safari introduced a real production issue because Intelligent Tracking Prevention (ITP) blocks third-party cookies between:
+- Vercel frontend
+- Render backend
+
+To solve this:
+- The frontend generates a persistent `conversationId`
+- The ID is stored in `localStorage`
+- Every request includes the ID
+- Backend state is resolved through a shared abstraction layer
+
+This allows conversations to persist correctly even when cookies fail.
+
+---
+
+## Architecture
+
+The system separates:
+- conversational AI behavior
+- deterministic backend business logic
+
+The AI handles:
+- natural language understanding
+- conversational responses
+- extraction of structured intent
+
+The backend handles:
+- scheduling validation
+- date resolution
+- slot conflict detection
+- persistence
+- booking confirmation
+- session state
+
+This architecture keeps critical business logic deterministic and testable.
+
+---
+
+## Key design decisions
+
+### Server owns date resolution, not the LLM
+
+The AI emits raw phrases (`"tomorrow"`, `"Friday"`, `"May 9"`) in its JSON payload. The server resolves them to concrete ISO dates using dayjs anchored to the business timezone. This prevents LLM hallucination of dates, handles edge cases like late-night requests crossing midnight correctly, and means timezone math is testable code instead of prompt engineering.
+
+---
+
+### Confirmation gate prevents accidental bookings
+
+The booking flow has explicit states:
+
+`collecting → awaitingConfirmation → saved`
+
+The user must reply `"yes"` (matched as the whole message, not as a substring) to a structured summary before anything writes to the database.
+
+The yes/no regex tolerates trailing punctuation but not extra words — so `"ok so actually 3pm"` does not accidentally confirm the booking.
+
+---
+
+### Structured response types, not regex parsing of LLM prose
+
+Booking summaries and confirmed bookings ship as structured response fields:
+- `messageType`
+- `bookingDraft`
+- `suggestions`
+
+The frontend renders dedicated UI components from structured data instead of parsing natural-language responses.
+
+The conversational reply is preserved as fallback behavior for graceful degradation.
+
+---
+
+### Dual-store session abstraction
+
+Mobile Safari's Intelligent Tracking Prevention blocks third-party cookies between a Vercel frontend and Render backend, breaking standard `express-session`.
+
+The solution:
+- The frontend generates a stable `conversationId` (UUID)
+- The ID is stored in `localStorage`
+- Requests include the `conversationId`
+- The backend exposes a `getState(req)` abstraction
+
+Desktop users use the normal session path.
+
+Mobile users use the Map-keyed path.
+
+Both stores expose the same interface, making the rest of the handler storage-agnostic.
+
+---
+
+### CSS-only animations and responsive design
+
+The interface uses:
+- CSS animations only
+- no animation libraries
+
+Bubble transitions use lightweight fade + slide animations via `@keyframes`.
+
+Mobile layout uses:
+- `100dvh`
+- `safe-area-inset`
+- responsive breakpoints
+- 16px mobile input font sizing to prevent iOS auto-zoom
+
+---
+
+## Database Design
+
+Appointments are stored in SQLite.
+
+Each booking contains:
+- Name
+- Service
 - Date
 - Time
-- Phone number (if provided)
-- User intent (book, clarify, modify)
+- Phone number
+- Creation timestamp
 
-The backend then validates the request and confirms the appointment or suggests alternatives if conflicts occur.
+The backend validates:
+- business hours
+- blackout dates
+- slot capacity
+- duplicate conflicts
 
----
-
-### Backend Scheduling Logic
-
-The backend implements several layers of validation to ensure bookings follow real-world constraints:
-
-- Business hours enforcement
-- Blackout date handling (holidays or closed days)
-- Slot capacity limits
-- Automatic alternative slot suggestions
-- Automatic customer record creation or lookup
-
-This allows the chatbot to behave like a real scheduling engine rather than a simple conversational interface.
+before insertion.
 
 ---
 
-### Phone Number Validation
+## What this project demonstrates
 
-Phone numbers provided by users are validated and normalized before being stored.
+This project focuses on combining conversational AI with real backend business logic:
 
-The system:
-
-- Accepts multiple formats
-- Removes non-digit characters
-- Validates a 10-digit North American number
-- Returns helpful error messages for invalid input
-
----
-
-### User Interface
-
-The frontend is built using React and designed as a modern chat interface.
-
-UI features include:
-
-- Message bubbles for user and assistant responses
-- Timestamped messages
-- Typing indicator
-- Online status indicator
-- Smooth animations and transitions
-- Responsive layout
-
-The design focuses on clarity and usability while maintaining a polished visual style.
+- **LLM integration with deterministic guardrails** — using AI for natural language understanding while keeping business logic, dates, and persistence in plain backend code
+- **Stateful conversation design** — explicit state machine with confirmation gating, draft merging, and conflict-aware flows
+- **Cross-platform session handling** — diagnosing and solving real mobile Safari cookie/session issues with a clean abstraction
+- **Production frontend polish** — responsive design, mobile viewport handling, iOS zoom prevention, structured UI rendering
+- **Structured AI architecture** — AI outputs structured payloads while backend systems remain deterministic
+- **Real deployment experience** — deployed frontend/backend architecture with environment configuration and cross-origin handling
+- **Backend validation systems** — scheduling rules enforced independently of AI responses
 
 ---
 
-## Technology Stack
+## Known limitations
 
-### Frontend
+This project was built as an MVP, so there are still some limitations and production considerations worth noting:
 
-- React
-- Vite
-- Custom CSS
-
-### Backend
-
-- Node.js
-- Express
-- OpenAI API
-
-### Database
-
-- SQLite
+- **In-memory state stores.** Both the conversation Map and `express-session`'s default `MemoryStore` lose all active conversations on restart. Redis or a persistent DB-backed store would be required for production scaling.
+- **Session TTL is temporary.** Long inactive conversations eventually expire and restart.
+- **No rate limiting.** The API currently accepts unlimited requests.
+- **Conversation IDs are not cryptographically signed.** A production system should validate ownership server-side.
+- **No formal accessibility audit.** Semantic HTML is used, but screen-reader testing was not completed.
+- **LLM prompt stability matters.** The booking flow assumes structured JSON output from the model.
 
 ---
 
-## Database Schema
+## Future Improvements
 
-The SQLite database stores customer and appointment information.
+Potential future enhancements include:
 
-Main tables include:
-
-- `customers` – customer information and phone numbers
-- `appointments` – scheduled bookings
-- `hours` – configured business hours
-- `blackouts` – closed dates and holidays
+- Google Calendar integration
+- SMS / email confirmations
+- User authentication
+- Multi-business support
+- Admin dashboard
+- Real-time availability calendar
+- Payment integration
+- Redis-backed session storage
+- AI memory personalization
+- Analytics dashboard
+- Voice booking support
+- Multi-language support
 
 ---
 
-## Getting Started
+## Installation
 
 ### Clone the repository
 
 ```bash
-git clone https://github.com/syedmohibimamzaidi/ai-appointment-chatbot.git
+git clone https://github.com/yourusername/ai-appointment-chatbot.git
 cd ai-appointment-chatbot
 ```
 
 ### Install dependencies
 
+Frontend:
+
 ```bash
+cd frontend
 npm install
 ```
 
-### Configure environment variables
+Backend:
 
-Create a `.env` file in the project root:
+```bash
+cd backend
+npm install
+```
+
+---
+
+## Environment Variables
+
+Create a `.env` file in the backend directory:
 
 ```env
-OPENAI_API_KEY=your_api_key_here
+OPENAI_API_KEY=your_api_key
+SESSION_SECRET=your_secret
+PORT=5000
 ```
 
-### Initialize the database
+---
+
+## Running Locally
+
+### Start backend
 
 ```bash
-node seed.js
+npm run server
 ```
 
-### Start the backend server
+### Start frontend
 
 ```bash
-node server.js
-```
-
-### Run the frontend
-
-```bash
-cd client
-npm install
 npm run dev
 ```
 
 ---
 
-## System Architecture
+## Deployment
 
-The request flow follows this sequence:
+Frontend is deployed on Vercel.
 
-```text
-Frontend → Backend → OpenAI API → Backend → SQLite → Frontend
-```
+Backend is deployed on Render.
 
-1. The user sends a message through the chat interface.
-2. The frontend sends the message to the `/chatbot` API endpoint.
-3. The backend forwards the prompt to the OpenAI API for structured intent extraction.
-4. The backend validates the extracted booking data.
-5. If valid, the booking is stored in the SQLite database.
-6. The result is returned to the frontend as a chat response.
-
-The backend response includes:
-
-- `reply` – message shown to the user
-- `parsed` – extracted structured booking data
-- `saved` – booking record (if created)
-- `conflict` – whether a scheduling conflict occurred
-- `suggestions` – alternative available time slots
-
----
-
-## Production Extensions
-
-The system architecture allows several integrations for real-world deployment:
-
-- **Email confirmations (SendGrid / AWS SES)**  
-  Send automatic confirmation emails after bookings are created.
-
-- **SMS notifications (Twilio)**  
-  Send SMS confirmations and appointment reminders to customers.
-
-- **Admin dashboard**  
-  Interface for managing bookings, services, and blackout dates.
-
-- **Calendar export**  
-  Generate `.ics` files compatible with Google Calendar or Outlook.
-
-- **Rescheduling and cancellation through chat**  
-  Extend the conversational interface to support booking modifications.
+Production configuration includes:
+- CORS handling
+- session configuration
+- environment variables
+- mobile-safe session persistence
 
 ---
 
