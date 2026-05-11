@@ -23,6 +23,7 @@ const SERVICE_DURATION_MIN = parseInt(process.env.SERVICE_DURATION_MIN || "30");
 const SUGGEST_SLOTS = parseInt(process.env.SUGGEST_SLOTS || "3", 10);
 const [OPEN_HHMM, CLOSE_HHMM] = (process.env.HOURS || "09:00-18:00").split("-");
 const TZ = "America/Edmonton";
+const DEBUG = process.env.NODE_ENV !== "production";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATE / TIMEZONE — single source of truth
@@ -455,16 +456,18 @@ app.post("/chatbot", async (req, res) => {
     // ── Session debug ────────────────────────────────────────────────────────
     // If sessionID changes between requests, the cookie isn't round-tripping
     // and pendingBooking will be empty every turn. Watch this log.
-    console.log(
-      `🔑 SESSION ${req.sessionID?.slice(0, 8)}…  ` +
-        `pendingFields=[${
-          Object.keys(req.session.pendingBooking || {})
-            .filter((k) => req.session.pendingBooking[k])
-            .join(",") || "none"
-        }]  ` +
-        `awaitingConfirmation=${!!req.session.awaitingConfirmation}  ` +
-        `historyLen=${(req.session.conversationHistory || []).length}`,
-    );
+    if (DEBUG) {
+      console.log(
+        `🔑 SESSION ${req.sessionID?.slice(0, 8)}…  ` +
+          `pendingFields=[${
+            Object.keys(req.session.pendingBooking || {})
+              .filter((k) => req.session.pendingBooking[k])
+              .join(",") || "none"
+          }]  ` +
+          `awaitingConfirmation=${!!req.session.awaitingConfirmation}  ` +
+          `historyLen=${(req.session.conversationHistory || []).length}`,
+      );
+    }
 
     // ── Session state initialisation ────────────────────────────────────────
     if (!req.session.conversationHistory) req.session.conversationHistory = [];
@@ -472,9 +475,13 @@ app.post("/chatbot", async (req, res) => {
 
     // ── Pre-detect yes/no so we can short-circuit the AI call when confirming ──
     const trimmedMsg = (message || "").trim().toLowerCase();
+
+    // Match yes/no ONLY when it is the entire message (with optional trailing
+    // punctuation like "yes!", "no."). Prevents "ok so actually 3pm" from being
+    // treated as confirmation while the user is still editing the draft.
     const YES_RE =
-      /^(yes|yeah|yep|yup|sure|ok|okay|confirm|confirmed|book it|sounds good|go ahead|please do|do it|that's right|thats right|correct)\b/i;
-    const NO_RE = /^(no|nope|nah|cancel|don't|do not|stop|wait|abort)\b/i;
+      /^(yes|yeah|yep|yup|sure|ok|okay|confirm|confirmed|book it|sounds good|go ahead|please do|do it|that's right|thats right|correct)[!.?]*$/i;
+    const NO_RE = /^(no|nope|nah|cancel|don't|do not|stop|wait|abort)[!.?]*$/i;
     const isYes = YES_RE.test(trimmedMsg);
     const isNo = NO_RE.test(trimmedMsg);
     const shortCircuitAI =
@@ -492,11 +499,13 @@ app.post("/chatbot", async (req, res) => {
       rawReply = aiResult.reply;
       req.session.conversationHistory = aiResult.conversationHistory;
 
-      console.log(
-        "\n💬 AI Chatbot Reply:\n---------------------\n",
-        rawReply,
-        "\n---------------------",
-      );
+      if (DEBUG) {
+        console.log(
+          "\n💬 AI Chatbot Reply:\n---------------------\n",
+          rawReply,
+          "\n---------------------",
+        );
+      }
 
       payload = extractJsonBlock(rawReply);
       console.log("AI PAYLOAD:", payload);
@@ -506,7 +515,11 @@ app.post("/chatbot", async (req, res) => {
         ...req.session.conversationHistory,
         { role: "user", content: message },
       ];
-      console.log("⚡ Short-circuiting AI call — handling yes/no confirmation");
+      if (DEBUG) {
+        console.log(
+          "⚡ Short-circuiting AI call — handling yes/no confirmation",
+        );
+      }
     }
 
     // ── Fallback: if the AI reply had no JSON block, recover gracefully ───────
@@ -526,10 +539,12 @@ app.post("/chatbot", async (req, res) => {
       reply = missing
         ? `Sorry, I didn't catch that. Could you tell me ${fieldLabel[missing]}?`
         : rawReply;
-      console.warn(
-        "⚠️  AI reply had no JSON block. Recovered with fallback:",
-        reply,
-      );
+      if (DEBUG) {
+        console.warn(
+          "⚠️  AI reply had no JSON block. Recovered with fallback:",
+          reply,
+        );
+      }
     }
 
     // ── Merge any new fields into the running pendingBooking ─────────────────
@@ -570,15 +585,17 @@ app.post("/chatbot", async (req, res) => {
     const complete = isComplete(booking);
 
     // ── Confirmation state machine ───────────────────────────────────────────
-    console.log("┌─ CONFIRMATION STATE ────────────────────────────────");
-    console.log(
-      `│  bookingDraft:          ${JSON.stringify({ name: booking.name, service: booking.service, date: booking.date, time: booking.time })}`,
-    );
-    console.log(`│  awaitingConfirmation:  ${awaitingConfirmation}`);
-    console.log(`│  userSaidYes:           ${isYes}`);
-    console.log(`│  userSaidNo:            ${isNo}`);
-    console.log(`│  draftIsComplete:       ${complete}`);
-    console.log("└─────────────────────────────────────────────────────");
+    if (DEBUG) {
+      console.log("┌─ CONFIRMATION STATE ────────────────────────────────");
+      console.log(
+        `│  bookingDraft:          ${JSON.stringify({ name: booking.name, service: booking.service, date: booking.date, time: booking.time })}`,
+      );
+      console.log(`│  awaitingConfirmation:  ${awaitingConfirmation}`);
+      console.log(`│  userSaidYes:           ${isYes}`);
+      console.log(`│  userSaidNo:            ${isNo}`);
+      console.log(`│  draftIsComplete:       ${complete}`);
+      console.log("└─────────────────────────────────────────────────────");
+    }
 
     // CASE A: User explicitly declined a pending confirmation → clear draft
     if (awaitingConfirmation && isNo) {
@@ -589,18 +606,20 @@ app.post("/chatbot", async (req, res) => {
 
       // CASE B: User confirmed a pending complete draft → run availability checks + save
     } else if (awaitingConfirmation && isYes && complete) {
-      // Date resolution diagnostic
-      const { isoDate: serverNowISO, displayDate: serverNowDisplay } =
-        getBusinessNow();
-      console.log("┌─ DATE RESOLUTION ───────────────────────────────────");
-      console.log(
-        `│  serverNow:          ${serverNowISO}  (${serverNowDisplay})`,
-      );
-      console.log(`│  businessNow TZ:     ${BUSINESS_TZ}`);
-      console.log(`│  dateText (raw):     "${booking.dateText}"`);
-      console.log(`│  resolvedDate:       ${booking.date}`);
-      console.log(`│  resolvedDisplay:    ${booking.displayDate}`);
-      console.log("└─────────────────────────────────────────────────────");
+      if (DEBUG) {
+        // Date resolution diagnostic
+        const { isoDate: serverNowISO, displayDate: serverNowDisplay } =
+          getBusinessNow();
+        console.log("┌─ DATE RESOLUTION ───────────────────────────────────");
+        console.log(
+          `│  serverNow:          ${serverNowISO}  (${serverNowDisplay})`,
+        );
+        console.log(`│  businessNow TZ:     ${BUSINESS_TZ}`);
+        console.log(`│  dateText (raw):     "${booking.dateText}"`);
+        console.log(`│  resolvedDate:       ${booking.date}`);
+        console.log(`│  resolvedDisplay:    ${booking.displayDate}`);
+        console.log("└─────────────────────────────────────────────────────");
+      }
 
       const blackout = await findBlackout(booking.date);
 
@@ -745,7 +764,7 @@ app.post("/chatbot", async (req, res) => {
       parsed: payload || null,
       saved,
       conflict,
-      suggestions,
+      suggestions: suggestions.map(formatDisplayTime),
       awaitingConfirmation: !!req.session.awaitingConfirmation,
       messageType,
       bookingDraft,

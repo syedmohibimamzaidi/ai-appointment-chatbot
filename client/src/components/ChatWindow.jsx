@@ -2,11 +2,9 @@ import { useEffect, useRef } from "react";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 
-export default function ChatWindow({ messages, isTyping }) {
+export default function ChatWindow({ messages, isTyping, onChipClick }) {
   const bottomRef = useRef(null);
 
-  // Smoothly scroll to the newest message whenever the list grows
-  // or the typing indicator appears/disappears.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, isTyping]);
@@ -23,13 +21,13 @@ export default function ChatWindow({ messages, isTyping }) {
           isError={msg.isError}
           messageType={msg.messageType}
           bookingDraft={msg.bookingDraft}
+          suggestions={msg.suggestions}
+          onChipClick={onChipClick}
         />
       ))}
 
       {isTyping && <TypingIndicator />}
 
-      {/* Sentinel: an invisible anchor at the very bottom of the list.
-          We scroll this element into view to follow new messages. */}
       <div ref={bottomRef} />
     </div>
   );

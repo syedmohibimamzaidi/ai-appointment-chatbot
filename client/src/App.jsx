@@ -2,7 +2,7 @@ import { useState } from "react";
 import ChatWindow from "./components/ChatWindow";
 import InputBar from "./components/InputBar";
 import { sendMessage } from "./api";
-import "./index.css"; // main global styles
+import "./index.css";
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -11,6 +11,7 @@ function App() {
   async function handleSend(userText) {
     const trimmed = userText.trim();
     if (!trimmed) return;
+    if (isTyping) return;
 
     const now = new Date();
 
@@ -37,6 +38,7 @@ function App() {
         createdAt: new Date().toISOString(),
         messageType: response.messageType,
         bookingDraft: response.bookingDraft,
+        suggestions: response.suggestions,
       };
 
       setMessages((prev) => [...prev, botMessage]);
@@ -69,7 +71,11 @@ function App() {
           </div>
         </header>
 
-        <ChatWindow messages={messages} isTyping={isTyping} />
+        <ChatWindow
+          messages={messages}
+          isTyping={isTyping}
+          onChipClick={handleSend}
+        />
         <InputBar onSend={handleSend} />
       </div>
     </div>

@@ -8,6 +8,8 @@ export default function MessageBubble({
   isError,
   messageType,
   bookingDraft,
+  suggestions,
+  onChipClick,
 }) {
   const isUser = sender === "user";
 
@@ -24,10 +26,6 @@ export default function MessageBubble({
     return text.replace(/```json[\s\S]*?```/g, "").trim();
   }
 
-  // A booking card can be in one of two visual states:
-  //   - "booking_summary"   → blue, asking for confirmation
-  //   - "booking_confirmed" → green, after the user said yes
-  // Both share the same structure and component.
   const isBookingCard =
     !isUser &&
     (messageType === "booking_summary" ||
@@ -35,6 +33,14 @@ export default function MessageBubble({
     bookingDraft;
 
   const isConfirmed = messageType === "booking_confirmed";
+
+  // Only show chips on bot messages that carry a non-empty suggestions array
+  // and only when not rendering a booking card (those don't suggest slots).
+  const hasSuggestions =
+    !isUser &&
+    !isBookingCard &&
+    Array.isArray(suggestions) &&
+    suggestions.length > 0;
 
   return (
     <div
@@ -53,6 +59,21 @@ export default function MessageBubble({
           <BookingSummaryCard draft={bookingDraft} confirmed={isConfirmed} />
         ) : (
           <p>{stripJson(text)}</p>
+        )}
+
+        {hasSuggestions && (
+          <div className="suggestion-chips">
+            {suggestions.map((time) => (
+              <button
+                key={time}
+                type="button"
+                className="suggestion-chip"
+                onClick={() => onChipClick?.(time)}
+              >
+                {time}
+              </button>
+            ))}
+          </div>
         )}
 
         <div className="bubble-meta">

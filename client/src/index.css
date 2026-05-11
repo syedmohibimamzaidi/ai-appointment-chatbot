@@ -483,3 +483,100 @@ textarea::-webkit-resizer {
   color: #86efac;
   flex-shrink: 0;
 }
+
+/* Suggestion chips ------------------------------------------------------ */
+
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.1);
+  color: #dbeafe;
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background 0.15s ease-out,
+    border-color 0.15s ease-out,
+    transform 0.08s ease-out,
+    box-shadow 0.15s ease-out;
+}
+
+.suggestion-chip:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.25);
+}
+
+.suggestion-chip:active {
+  transform: translateY(1px);
+}
+
+.suggestion-chip:focus-visible {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.85);
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.35);
+}
+
+/* Responsive: small screens (phones) ----------------------------------- */
+
+@media (max-width: 600px) {
+  /* RU1 — reduce shell padding so bubbles aren't crushed */
+  .app-shell {
+    padding: 0.75rem;
+  }
+
+  /* RU1 + RU5 — tighter card padding and matching height calc */
+  .chat-card {
+    height: calc(100vh - 1.5rem);
+    padding: 1rem 1rem 0.75rem;
+    border-radius: 18px;
+  }
+
+  /* RU4 — give the subtitle room; hide it below 380px */
+  .chat-header h1 {
+    font-size: 1.05rem;
+  }
+  .chat-header p {
+    font-size: 0.78rem;
+  }
+
+  /* RU2 — let bubbles breathe across the narrower viewport */
+  .bubble {
+    max-width: 88%;
+  }
+
+  /* RU3 — booking card must fit even on iPhone SE */
+  .bubble-booking {
+    max-width: 100%;
+    padding: 0.85rem 0.95rem;
+  }
+
+  /* RU8 — single-column data grid at very narrow widths */
+  .booking-card__grid {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+
+  /* RU8 — Date row no longer needs to span; reset the special rule */
+  .booking-card__item:nth-child(2) {
+    grid-column: auto;
+  }
+}
+
+/* RU4 — drop the header subtitle on the smallest phones */
+@media (max-width: 380px) {
+  .chat-header p {
+    display: none;
+  }
+}
