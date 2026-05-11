@@ -191,6 +191,41 @@ console.log(
   `SERVER STARTUP — businessNow: ${_startupNow.isoDate} (${_startupNow.displayDate}) [${BUSINESS_TZ}]`,
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Conversation state — dual store
+//
+// Mobile Safari blocks third-party cookies, so the session cookie doesn't
+// survive cross-site requests (Vercel frontend → Render backend). We let the
+// client send a stable `conversationId` (from localStorage) and key state off
+// that when present; otherwise we fall back to express-session as before.
+//
+// Both stores are in-memory, which matches the existing MemoryStore behavior.
+// Swap for Redis/SQLite when scaling.
+// ─────────────────────────────────────────────────────────────────────────────
+const conversationStore = new Map();
+
+function getState(req) {
+  const id = req.body?.conversationId;
+  if (id) {
+    if (!conversationStore.has(id)) {
+      conversationStore.set(id, {
+        conversationHistory: [],
+        pendingBooking: {},
+        awaitingConfirmation: false,
+      });
+    }
+    return { store: "id", state: conversationStore.get(id), id };
+  }
+  // Fallback: express-session
+  if (!req.session.conversationHistory) req.session.conversationHistory = [];
+  if (!req.session.pendingBooking) req.session.pendingBooking = {};
+  return {
+    store: "session",
+    state: req.session,
+    id: req.sessionID,
+  };
+}
+
 // middleware
 // CORS must allow credentials so the session cookie survives cross-origin
 // requests (e.g. Vite dev server on :5173 calling backend on :3000).
@@ -459,20 +494,22 @@ app.post("/chatbot", async (req, res) => {
     // and pendingBooking will be empty every turn. Watch this log.
     if (DEBUG) {
       console.log(
-        `🔑 SESSION ${req.sessionID?.slice(0, 8)}…  ` +
+        `🔑 STATE[${store}] ${stateKey?.slice(0, 8)}…  ` +
           `pendingFields=[${
-            Object.keys(req.session.pendingBooking || {})
-              .filter((k) => req.session.pendingBooking[k])
+            Object.keys(state.pendingBooking || {})
+              .filter((k) => state.pendingBooking[k])
               .join(",") || "none"
           }]  ` +
-          `awaitingConfirmation=${!!req.session.awaitingConfirmation}  ` +
-          `historyLen=${(req.session.conversationHistory || []).length}`,
+          `awaitingConfirmation=${!!state.awaitingConfirmation}  ` +
+          `historyLen=${(state.conversationHistory || []).length}`,
       );
     }
 
-    // ── Session state initialisation ────────────────────────────────────────
-    if (!req.session.conversationHistory) req.session.conversationHistory = [];
-    if (!req.session.pendingBooking) req.session.pendingBooking = {};
+    // ── Conversation state ─────────────────────────────────────────────────
+    // Resolves to either a conversationId-keyed entry (mobile) or req.session
+    // (desktop). The rest of the handler reads/writes `state.X` instead of
+    // `req.session.X` so the storage choice is transparent.
+    const { store, state, id: stateKey } = getState(req);
 
     // ── Pre-detect yes/no so we can short-circuit the AI call when confirming ──
     const trimmedMsg = (message || "").trim().toLowerCase();
