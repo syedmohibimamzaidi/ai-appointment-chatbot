@@ -15,8 +15,10 @@
   "description": "",
   "dependencies": {
     "cors": "^2.8.5",
+    "dayjs": "^1.11.20",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "express-session": "^1.19.0",
     "openai": "^6.7.0",
     "sqlite3": "^5.1.7"
   }

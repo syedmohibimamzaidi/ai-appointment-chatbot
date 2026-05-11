@@ -16,15 +16,14 @@ async function main() {
   ];
 
   for (const [dow, open, close] of hours) {
-    await run("INSERT INTO hours (dow, open, close) VALUES (?, ?, ?)", [
-      dow,
-      open,
-      close,
-    ]);
+    await run(
+      "INSERT OR REPLACE INTO hours (dow, open, close) VALUES (?, ?, ?)",
+      [dow, open, close],
+    );
   }
 
   // 3) Insert a blackout on 2025-11-17
-  await run("INSERT INTO blackouts (date, note) VALUES (?, ?)", [
+  await run("INSERT OR REPLACE INTO blackouts (date, note) VALUES (?, ?)", [
     "2025-11-17",
     "Shop closed for renovation",
   ]);

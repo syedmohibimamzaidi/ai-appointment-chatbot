@@ -2,11 +2,17 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc.js";
+import timezone from "dayjs/plugin/timezone.js";
+import session from "express-session";
 import { getChatResponse } from "./chatbot.js";
 import { db, run, all, get, findOrCreateCustomer } from "./db.js";
 
 // env
 dotenv.config();
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 // constants
 const app = express();
@@ -16,12 +22,209 @@ const SLOT_STEP_MINUTES = parseInt(process.env.SLOT_STEP_MINUTES || "30", 10);
 const SERVICE_DURATION_MIN = parseInt(process.env.SERVICE_DURATION_MIN || "30");
 const SUGGEST_SLOTS = parseInt(process.env.SUGGEST_SLOTS || "3", 10);
 const [OPEN_HHMM, CLOSE_HHMM] = (process.env.HOURS || "09:00-18:00").split("-");
-const TODAY_ISO = new Date().toISOString().slice(0, 10);
-const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const TZ = "America/Edmonton";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATE / TIMEZONE — single source of truth
+//
+// BUSINESS_TZ is the canonical timezone for all date arithmetic.
+// It is evaluated fresh on every call (never cached at module load)
+// so it correctly handles requests at 11:58 PM, midnight rollovers, etc.
+// ─────────────────────────────────────────────────────────────────────────────
+const BUSINESS_TZ = process.env.BUSINESS_TZ || TZ; // "America/Edmonton"
+
+/**
+ * getBusinessNow()
+ * Returns the current moment expressed in the business timezone.
+ * Call this fresh inside every request — never cache the result.
+ *
+ * @returns {{ now: dayjs, isoDate: string, displayDate: string, weekday: string }}
+ */
+function getBusinessNow() {
+  const now = dayjs().tz(BUSINESS_TZ);
+  return {
+    now, // dayjs object for arithmetic
+    isoDate: now.format("YYYY-MM-DD"), // e.g. "2026-05-08"
+    displayDate: now.format("dddd, MMMM D, YYYY"), // e.g. "Friday, May 8, 2026"
+    weekday: now.format("dddd").toLowerCase(), // e.g. "friday"
+  };
+}
+
+/**
+ * resolveDateText(dateText)
+ * Converts a raw human date phrase into a concrete YYYY-MM-DD.
+ * The AI outputs the raw phrase; THIS function converts it — the AI never does.
+ *
+ * Handles:
+ *   "today"                     → Edmonton today
+ *   "tomorrow"                  → Edmonton today + 1 day
+ *   weekday name ("friday")     → next upcoming occurrence of that weekday
+ *   "next <weekday>"            → same as plain weekday (next upcoming)
+ *   partial date ("May 9")      → resolved against current year/context
+ *   ISO date ("2026-05-10")     → passed through unchanged
+ *
+ * @param {string} dateText  - Raw phrase from AI payload e.g. "tomorrow", "Friday"
+ * @returns {{ isoDate: string, displayLabel: string }}
+ */
+function resolveDateText(dateText) {
+  const { now, isoDate: todayISO } = getBusinessNow();
+
+  if (!dateText || !dateText.trim()) {
+    return { isoDate: "", displayLabel: "" };
+  }
+
+  const raw = dateText.trim();
+  const lower = raw.toLowerCase().replace(/^next\s+/, ""); // strip leading "next "
+
+  // ── "today" ────────────────────────────────────────────────────────────────
+  if (lower === "today") {
+    return {
+      isoDate: todayISO,
+      displayLabel: now.format("dddd, MMMM D, YYYY"),
+    };
+  }
+
+  // ── "tomorrow" ─────────────────────────────────────────────────────────────
+  if (lower === "tomorrow") {
+    const d = now.add(1, "day");
+    return {
+      isoDate: d.format("YYYY-MM-DD"),
+      displayLabel: d.format("dddd, MMMM D, YYYY"),
+    };
+  }
+
+  // ── Weekday name ("friday", "saturday", …) ─────────────────────────────────
+  const WEEKDAYS = [
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+  ];
+  if (WEEKDAYS.includes(lower)) {
+    const target = WEEKDAYS.indexOf(lower);
+    const current = now.day(); // 0=Sun … 6=Sat
+    let diff = target - current;
+    if (diff <= 0) diff += 7; // always the NEXT upcoming occurrence
+    const d = now.add(diff, "day");
+    return {
+      isoDate: d.format("YYYY-MM-DD"),
+      displayLabel: d.format("dddd, MMMM D, YYYY"),
+    };
+  }
+
+  // ── Already a valid ISO date ("2026-05-10") ────────────────────────────────
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const d = dayjs.tz(raw, BUSINESS_TZ);
+    return {
+      isoDate: raw,
+      displayLabel: d.format("dddd, MMMM D, YYYY"),
+    };
+  }
+
+  // ── Partial date ("May 9", "May 9th", "9 May") ───────────────────────────
+  // Attempt to parse with dayjs using the current year; bump year if already past.
+  const MONTHS = {
+    january: 1,
+    february: 2,
+    march: 3,
+    april: 4,
+    may: 5,
+    june: 6,
+    july: 7,
+    august: 8,
+    september: 9,
+    october: 10,
+    november: 11,
+    december: 12,
+    jan: 1,
+    feb: 2,
+    mar: 3,
+    apr: 4,
+    jun: 6,
+    jul: 7,
+    aug: 8,
+    sep: 9,
+    oct: 10,
+    nov: 11,
+    dec: 12,
+  };
+  // Match "May 9", "May 9th", "9 May", "9th May"
+  const partialRe =
+    /^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?$|^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)$/i;
+  const pm = raw.replace(/\./g, "").trim().match(partialRe);
+  if (pm) {
+    const monthWord = (pm[1] || pm[4]).toLowerCase();
+    const dayNum = parseInt(pm[2] || pm[3], 10);
+    const monthNum = MONTHS[monthWord];
+    if (monthNum && dayNum >= 1 && dayNum <= 31) {
+      let year = now.year();
+      let candidate = dayjs.tz(
+        `${year}-${String(monthNum).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`,
+        BUSINESS_TZ,
+      );
+      // If the date has already passed this year, use next year
+      if (candidate.isBefore(now, "day")) {
+        year += 1;
+        candidate = dayjs.tz(
+          `${year}-${String(monthNum).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`,
+          BUSINESS_TZ,
+        );
+      }
+      return {
+        isoDate: candidate.format("YYYY-MM-DD"),
+        displayLabel: candidate.format("dddd, MMMM D, YYYY"),
+      };
+    }
+  }
+
+  // ── Fallback: return raw text unmodified so the caller can handle the gap ──
+  return { isoDate: raw, displayLabel: raw };
+}
+
+// Log server's view of "now" at startup so it's easy to spot TZ misconfiguration.
+const _startupNow = getBusinessNow();
+console.log(
+  `SERVER STARTUP — businessNow: ${_startupNow.isoDate} (${_startupNow.displayDate}) [${BUSINESS_TZ}]`,
+);
 
 // middleware
-app.use(cors());
+// CORS must allow credentials so the session cookie survives cross-origin
+// requests (e.g. Vite dev server on :5173 calling backend on :3000).
+// `origin` MUST be explicit (not "*") when credentials are enabled — browsers
+// reject wildcard origins on credentialed requests.
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+app.use(
+  cors({
+    origin: CLIENT_ORIGIN,
+    credentials: true,
+  }),
+);
 app.use(express.json());
+
+// Session middleware — keeps conversationHistory and pendingBooking per browser tab.
+// For production, swap MemoryStore with connect-sqlite3 or connect-redis.
+//
+// NOTE on cookies in dev:
+//   - sameSite: "lax" works when frontend & backend share the same site
+//   - For cross-site (different ports/domains), browsers require sameSite:"none"
+//     AND secure:true (HTTPS). For local dev over HTTP, "lax" is the right choice
+//     and works because Vite proxies or same-localhost requests count as same-site.
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "chatbot-dev-secret",
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+      maxAge: 30 * 60 * 1000, // 30 minutes
+      httpOnly: true,
+      sameSite: "lax",
+      secure: false, // set true in production behind HTTPS
+    },
+  }),
+);
 
 // DB helpers
 async function slotCount(date, time) {
@@ -45,7 +248,7 @@ async function insertBooking(b) {
   return b;
 }
 
-// Pure utilities (no DB)
+// Pure utilities
 function hhmmToMinutes(hhmm) {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
@@ -75,7 +278,6 @@ function formatDisplayDate(dateStr) {
   });
 }
 
-// --- phone validation helper ---
 function validatePhone(raw) {
   if (!raw) {
     return {
@@ -85,29 +287,13 @@ function validatePhone(raw) {
         "The phone number you provided seems invalid. Please enter a 10-digit phone number.",
     };
   }
-
-  // Keep only digits
   const digits = String(raw).replace(/\D/g, "");
-
-  // If it looks like +1XXXXXXXXXX or 1XXXXXXXXXX (11 digits, leading 1)
   if (digits.length === 11 && digits.startsWith("1")) {
-    return {
-      valid: true,
-      normalized: digits.slice(1), // drop the leading country code
-      message: "",
-    };
+    return { valid: true, normalized: digits.slice(1), message: "" };
   }
-
-  // Plain North American style: exactly 10 digits
   if (digits.length === 10) {
-    return {
-      valid: true,
-      normalized: digits,
-      message: "",
-    };
+    return { valid: true, normalized: digits, message: "" };
   }
-
-  // Anything else is invalid
   return {
     valid: false,
     normalized: "",
@@ -126,14 +312,60 @@ function extractJsonBlock(reply) {
   }
 }
 
-function toBookingObject(payload) {
+/**
+ * Merge newly extracted fields from the AI payload into the running pendingBooking.
+ * Only overwrites a field if the new value is non-empty — so earlier answers are
+ * never wiped by a later partial response.
+ *
+ * NOTE: we merge `dateText` (the raw phrase) — never `date` (ISO string).
+ * The AI is not trusted to output a resolved date; resolveDateText() does that.
+ */
+function mergeBookingFields(pending, payload) {
+  const merged = { ...pending };
+
+  // Scalar fields where we trust the AI directly
+  for (const field of ["name", "service", "time", "phone"]) {
+    const newVal = (payload?.[field] || "").trim();
+    if (newVal) merged[field] = newVal;
+  }
+
+  // Date: store the RAW phrase from the AI, not a resolved ISO date.
+  // The AI may output payload.dateText ("tomorrow", "Friday", "May 9").
+  // If (for backwards-compat) it outputs payload.date that looks like a raw phrase
+  // rather than an ISO date, accept that too — but reject anything that is already
+  // a resolved ISO date (those would have come from an older prompt version).
+  const rawDateText = (payload?.dateText || "").trim();
+  const legacyDate = (payload?.date || "").trim();
+
+  if (rawDateText) {
+    // Preferred: explicit dateText field
+    merged.dateText = rawDateText;
+  } else if (legacyDate && !/^\d{4}-\d{2}-\d{2}$/.test(legacyDate)) {
+    // Fallback: legacy `date` field that is NOT already an ISO string
+    // (e.g. the AI sent "tomorrow" in the `date` field from an old prompt)
+    merged.dateText = legacyDate;
+  }
+  // If legacyDate IS an ISO string we silently discard it — the server will
+  // re-resolve from dateText on the next complete booking attempt.
+
+  return merged;
+}
+
+/**
+ * Build the booking object that gets validated and saved.
+ * This is the ONLY place dateText is converted to a concrete ISO date.
+ */
+function toBookingObject(pending) {
+  const { isoDate, displayLabel } = resolveDateText(pending.dateText || "");
   return {
     id: crypto.randomUUID(),
-    name: (payload?.name || "").trim(),
-    service: (payload?.service || "").trim(),
-    date: (payload?.date || "").trim(),
-    time: (payload?.time || "").trim(),
-    phone: (payload?.phone || "").trim(),
+    name: (pending.name || "").trim(),
+    service: (pending.service || "").trim(),
+    dateText: (pending.dateText || "").trim(), // keep for logging
+    date: isoDate, // resolved YYYY-MM-DD
+    displayDate: displayLabel, // e.g. "Saturday, May 9, 2026"
+    time: (pending.time || "").trim(),
+    phone: (pending.phone || "").trim(),
     createdAt: new Date().toISOString(),
   };
 }
@@ -147,56 +379,38 @@ function isComplete(b) {
   );
 }
 
-// --- helper for dates / times ---
-
 function getDowFromISO(dateStr) {
-  // dateStr: 'YYYY-MM-DD'
-  // JS getDay(): 0=Sun, 1=Mon, ..., 6=Sat
   const d = new Date(dateStr + "T00:00:00");
   return d.getDay();
 }
 
-// --- DB helpers for hours + blackouts ---
-
 async function getHoursForDate(dateStr) {
-  const dow = getDowFromISO(dateStr); // 0=Sun, 1=Mon, ...
+  const dow = getDowFromISO(dateStr);
   return await get("SELECT open, close FROM hours WHERE dow = ?", [dow]);
 }
 
-// blackout is keyed by real calendar date
 async function getBlackoutForDate(dateStr) {
   return await get("SELECT date, note FROM blackouts WHERE date = ?", [
     dateStr,
   ]);
 }
 
-// keep this if you use it elsewhere for messaging
 async function findBlackout(dateStr) {
   return await get("SELECT date, note FROM blackouts WHERE date = ?", [
     dateStr,
   ]);
 }
 
-// --- main business-hours guard ---
-
 export async function isWithinBusinessHours(dateStr, timeStr) {
-  // 1) Hard-closed if it’s a blackout date
   const blackout = await getBlackoutForDate(dateStr);
   if (blackout) return false;
-
-  // 2) Get dynamic hours for that weekday
   const hours = await getHoursForDate(dateStr);
-  if (!hours) return false; // no hours configured for that day
-
+  if (!hours) return false;
   const { open, close } = hours;
-
   const openMins = hhmmToMinutes(open);
   const closeMins = hhmmToMinutes(close);
-
   const start = hhmmToMinutes(timeStr);
-  const end = start + SERVICE_DURATION_MIN; // from env
-
-  // must be fully inside open/close
+  const end = start + SERVICE_DURATION_MIN;
   return start >= openMins && end <= closeMins;
 }
 
@@ -206,31 +420,19 @@ async function nextAvailableSlots(
   durationMin,
   limit = SUGGEST_SLOTS,
 ) {
-  // skip whole day if blackout
   if (await getBlackoutForDate(dateStr)) return [];
-
   const hours = await getHoursForDate(dateStr);
   if (!hours) return [];
-
   const { open, close } = hours;
-
   const openMins = hhmmToMinutes(open);
   const closeMins = hhmmToMinutes(close);
-
   let t = Math.max(hhmmToMinutes(startHHMM), openMins);
   const slots = [];
-
   while (t + durationMin <= closeMins && slots.length < limit) {
     const hhmm = minutesToHHMM(t);
-
-    const full = await isSlotFull(dateStr, hhmm);
-    if (!full) {
-      slots.push(hhmm);
-    }
-
-    t += SLOT_STEP_MINUTES; // e.g. 15 minutes
+    if (!(await isSlotFull(dateStr, hhmm))) slots.push(hhmm);
+    t += SLOT_STEP_MINUTES;
   }
-
   return slots;
 }
 
@@ -242,193 +444,295 @@ app.get("/", (req, res) => {
 app.post("/chatbot", async (req, res) => {
   try {
     const { message } = req.body;
-    let reply = await getChatResponse(message);
-    console.log(
-      "\n💬 AI Chatbot Reply:\n---------------------\n",
-      reply,
-      "\n---------------------",
-    );
 
-    const payload = extractJsonBlock(reply);
+    // Response state — populated by the confirmation state machine below.
     let saved = null;
     let conflict = false;
     let suggestions = [];
 
-    // booking is visible for the whole handler now
-    let booking = null;
+    // ── Session debug ────────────────────────────────────────────────────────
+    // If sessionID changes between requests, the cookie isn't round-tripping
+    // and pendingBooking will be empty every turn. Watch this log.
+    console.log(
+      `🔑 SESSION ${req.sessionID?.slice(0, 8)}…  ` +
+        `pendingFields=[${
+          Object.keys(req.session.pendingBooking || {})
+            .filter((k) => req.session.pendingBooking[k])
+            .join(",") || "none"
+        }]  ` +
+        `awaitingConfirmation=${!!req.session.awaitingConfirmation}  ` +
+        `historyLen=${(req.session.conversationHistory || []).length}`,
+    );
 
-    if (payload?.intent === "book") {
-      const booking = toBookingObject(payload);
+    // ── Session state initialisation ────────────────────────────────────────
+    if (!req.session.conversationHistory) req.session.conversationHistory = [];
+    if (!req.session.pendingBooking) req.session.pendingBooking = {};
 
-      if (booking.phone) {
-        const phoneValidation = validatePhone(booking.phone);
-        console.log("phone validation:", booking.phone, phoneValidation);
+    // ── Pre-detect yes/no so we can short-circuit the AI call when confirming ──
+    const trimmedMsg = (message || "").trim().toLowerCase();
+    const YES_RE =
+      /^(yes|yeah|yep|yup|sure|ok|okay|confirm|confirmed|book it|sounds good|go ahead|please do|do it|that's right|thats right|correct)\b/i;
+    const NO_RE = /^(no|nope|nah|cancel|don't|do not|stop|wait|abort)\b/i;
+    const isYes = YES_RE.test(trimmedMsg);
+    const isNo = NO_RE.test(trimmedMsg);
+    const shortCircuitAI =
+      !!req.session.awaitingConfirmation && (isYes || isNo);
 
-        if (!phoneValidation.valid) {
-          return res.json({
-            reply: phoneValidation.message,
-            parsed: payload,
-            saved: null,
-            conflict: false,
-            suggestions: [],
-          });
-        }
+    // ── Call AI (unless we're handling a yes/no confirmation, where the server owns the reply) ──
+    let rawReply = "";
+    let payload = null;
+    if (!shortCircuitAI) {
+      const aiResult = await getChatResponse(
+        message,
+        req.session.conversationHistory,
+        req.session.pendingBooking,
+      );
+      rawReply = aiResult.reply;
+      req.session.conversationHistory = aiResult.conversationHistory;
 
-        // Store normalized digits
-        booking.phone = phoneValidation.normalized;
+      console.log(
+        "\n💬 AI Chatbot Reply:\n---------------------\n",
+        rawReply,
+        "\n---------------------",
+      );
+
+      payload = extractJsonBlock(rawReply);
+      console.log("AI PAYLOAD:", payload);
+    } else {
+      // Still log the user's message into history so future AI turns have context
+      req.session.conversationHistory = [
+        ...req.session.conversationHistory,
+        { role: "user", content: message },
+      ];
+      console.log("⚡ Short-circuiting AI call — handling yes/no confirmation");
+    }
+
+    // ── Fallback: if the AI reply had no JSON block, recover gracefully ───────
+    let reply = rawReply;
+    if (!shortCircuitAI && !payload) {
+      const pending0 = req.session.pendingBooking;
+      const allRequired = ["name", "service", "dateText", "time"];
+      const missing = allRequired.find((f) =>
+        f === "dateText" ? !pending0.dateText : !pending0[f],
+      );
+      const fieldLabel = {
+        name: "your name",
+        service: "the service you'd like",
+        dateText: "what date works for you",
+        time: "what time you'd like",
+      };
+      reply = missing
+        ? `Sorry, I didn't catch that. Could you tell me ${fieldLabel[missing]}?`
+        : rawReply;
+      console.warn(
+        "⚠️  AI reply had no JSON block. Recovered with fallback:",
+        reply,
+      );
+    }
+
+    // ── Merge any new fields into the running pendingBooking ─────────────────
+    // Skip merging when the user just said "yes"/"no" — those aren't field values.
+    if (
+      payload &&
+      (payload.intent === "clarify" || payload.intent === "book") &&
+      !isYes &&
+      !isNo
+    ) {
+      req.session.pendingBooking = mergeBookingFields(
+        req.session.pendingBooking,
+        payload,
+      );
+    }
+
+    const pending = req.session.pendingBooking;
+    const awaitingConfirmation = !!req.session.awaitingConfirmation;
+
+    // ── Phone validation (unchanged) ─────────────────────────────────────────
+    if (pending.phone) {
+      const phoneValidation = validatePhone(pending.phone);
+      if (!phoneValidation.valid) {
+        req.session.pendingBooking.phone = "";
+        return res.json({
+          reply: phoneValidation.message,
+          parsed: payload,
+          saved: null,
+          conflict: false,
+          suggestions: [],
+        });
       }
+      req.session.pendingBooking.phone = phoneValidation.normalized;
+      pending.phone = phoneValidation.normalized;
+    }
 
-      if (isComplete(booking)) {
-        // 1) Check hours and blackout separately
-        const withinHours = await isWithinBusinessHours(
-          booking.date,
-          booking.time,
-        );
-        const blackout = await findBlackout(booking.date);
+    const booking = toBookingObject(pending);
+    const complete = isComplete(booking);
 
-        // We'll fill these if we need suggestions
-        let open = "??:??";
-        let close = "??:??";
+    // ── Confirmation state machine ───────────────────────────────────────────
+    console.log("┌─ CONFIRMATION STATE ────────────────────────────────");
+    console.log(
+      `│  bookingDraft:          ${JSON.stringify({ name: booking.name, service: booking.service, date: booking.date, time: booking.time })}`,
+    );
+    console.log(`│  awaitingConfirmation:  ${awaitingConfirmation}`);
+    console.log(`│  userSaidYes:           ${isYes}`);
+    console.log(`│  userSaidNo:            ${isNo}`);
+    console.log(`│  draftIsComplete:       ${complete}`);
+    console.log("└─────────────────────────────────────────────────────");
 
-        // 2) If blackout -> hard closed for the whole day
-        if (blackout) {
+    // CASE A: User explicitly declined a pending confirmation → clear draft
+    if (awaitingConfirmation && isNo) {
+      req.session.pendingBooking = {};
+      req.session.awaitingConfirmation = false;
+      reply =
+        "No problem — I've cancelled that booking. Let me know if you'd like to start over.";
+
+      // CASE B: User confirmed a pending complete draft → run availability checks + save
+    } else if (awaitingConfirmation && isYes && complete) {
+      // Date resolution diagnostic
+      const { isoDate: serverNowISO, displayDate: serverNowDisplay } =
+        getBusinessNow();
+      console.log("┌─ DATE RESOLUTION ───────────────────────────────────");
+      console.log(
+        `│  serverNow:          ${serverNowISO}  (${serverNowDisplay})`,
+      );
+      console.log(`│  businessNow TZ:     ${BUSINESS_TZ}`);
+      console.log(`│  dateText (raw):     "${booking.dateText}"`);
+      console.log(`│  resolvedDate:       ${booking.date}`);
+      console.log(`│  resolvedDisplay:    ${booking.displayDate}`);
+      console.log("└─────────────────────────────────────────────────────");
+
+      const blackout = await findBlackout(booking.date);
+
+      if (blackout) {
+        conflict = true;
+        req.session.awaitingConfirmation = false; // user must pick a new date
+        reply =
+          `❌ We're closed on ${booking.displayDate} due to: ${blackout.note || "a blackout day"}.\n` +
+          `Please choose another date and I'll re-confirm.`;
+      } else {
+        const hours = await getHoursForDate(booking.date);
+
+        if (!hours) {
           conflict = true;
-          suggestions = []; // nextAvailableSlots returns [] for blackout anyway
-
-          reply =
-            `❌ We're closed on ${booking.date} due to: ${
-              blackout.note || "a blackout day"
-            }.\n` +
-            `There are no available times that day. Please choose another date.`;
-        }
-
-        // 3) Not blackout, but outside business hours
-        else if (!withinHours) {
-          conflict = true;
-
-          // Suggest alternatives on same day
-          suggestions = await nextAvailableSlots(
+          req.session.awaitingConfirmation = false;
+          const dow = [
+            "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+          ][new Date(booking.date + "T00:00:00").getDay()];
+          reply = `❌ We're closed on ${dow}s. Please choose a different day.`;
+        } else {
+          const withinHours = await isWithinBusinessHours(
             booking.date,
             booking.time,
-            SERVICE_DURATION_MIN,
-            SUGGEST_SLOTS,
           );
 
-          const hours = await getHoursForDate(booking.date);
-          if (hours) ({ open, close } = hours);
-
-          const list = suggestions.length
-            ? suggestions.map((t) => `• ${t}`).join("\n")
-            : "";
-
-          reply =
-            `❌ We’re closed at ${booking.time} on ${booking.date}.\n` +
-            `Our hours that day are ${open}–${close}.\n` +
-            (list
-              ? `💡 Here are some available times:\n${list}`
-              : `There are no open times left that day. Please pick another date.`);
-        }
-
-        // 4) Within hours and not a blackout -> check capacity
-        else {
-          conflict = await isSlotFull(booking.date, booking.time);
-
-          if (!conflict) {
-            // Link customer
-            const customerId = await findOrCreateCustomer(
-              booking.name,
-              booking.phone,
-            );
-            booking.customerId = customerId;
-            // Happy path booking
-            saved = await insertBooking(booking);
-
-            const prettyTime = formatDisplayTime(booking.time);
-            const prettyDate = formatDisplayDate(booking.date);
-
-            reply = `✅ Appointment confirmed!\n\nYour ${booking.service} for ${booking.name} has been booked for ${prettyDate} at ${prettyTime}.`;
-          } else {
-            // Slot full -> suggest alternatives (no need to mention hours here)
+          if (!withinHours) {
+            conflict = true;
+            req.session.awaitingConfirmation = false;
             suggestions = await nextAvailableSlots(
               booking.date,
               booking.time,
               SERVICE_DURATION_MIN,
               SUGGEST_SLOTS,
             );
-
             const list = suggestions.length
-              ? suggestions.map((t) => `• ${t}`).join("\n")
+              ? suggestions.map((t) => `• ${formatDisplayTime(t)}`).join("\n")
               : "";
-
             reply =
-              `❌ That time is fully booked on ${booking.date}.\n` +
+              `❌ We're closed at ${formatDisplayTime(booking.time)} on ${booking.displayDate}.\n` +
+              `Our hours that day are ${formatDisplayTime(hours.open)}–${formatDisplayTime(hours.close)}.\n` +
               (list
-                ? `Here are the nearest available times:\n${list}`
-                : `There are no available times remaining that day. Please choose another date.`);
+                ? `💡 Here are some available times:\n${list}`
+                : `Please pick another date.`);
+          } else {
+            conflict = await isSlotFull(booking.date, booking.time);
+
+            if (!conflict) {
+              // ✅ Save the booking
+              const customerId = await findOrCreateCustomer(
+                booking.name,
+                booking.phone,
+              );
+              booking.customerId = customerId;
+              saved = await insertBooking(booking);
+
+              console.log(
+                `✅ savedBookingId: ${saved.id}  confirmedIntent: yes`,
+              );
+
+              // Reset session — prevents duplicate saves if user repeats "yes"
+              req.session.pendingBooking = {};
+              req.session.awaitingConfirmation = false;
+
+              const prettyTime = formatDisplayTime(booking.time);
+              reply = `✅ Appointment confirmed!\n\nYour ${booking.service} for ${booking.name} has been booked for ${booking.displayDate} at ${prettyTime}.`;
+            } else {
+              conflict = true;
+              req.session.awaitingConfirmation = false;
+              suggestions = await nextAvailableSlots(
+                booking.date,
+                booking.time,
+                SERVICE_DURATION_MIN,
+                SUGGEST_SLOTS,
+              );
+              const list = suggestions.length
+                ? suggestions.map((t) => `• ${formatDisplayTime(t)}`).join("\n")
+                : "";
+              reply =
+                `❌ That time is fully booked on ${booking.displayDate}.\n` +
+                (list
+                  ? `Here are the nearest available times:\n${list}`
+                  : `Please pick another date.`);
+            }
           }
         }
       }
+
+      // CASE C: All fields collected (whether newly so, or user edited the draft) → ask for confirmation
+    } else if (complete) {
+      // User may have edited a previously-confirmed draft (e.g. "actually 3pm"),
+      // in which case awaitingConfirmation is already true — just re-summarize.
+      req.session.awaitingConfirmation = true;
+      const prettyTime = formatDisplayTime(booking.time);
+      reply = `Just to confirm — should I book your ${booking.service} for ${booking.displayDate} at ${prettyTime} under ${booking.name}? Please reply "yes" to confirm or "no" to cancel.`;
+
+      // CASE D: User said "yes" but draft isn't complete → ignore the yes, keep collecting
+    } else if (isYes) {
+      // Fall through to the AI's rawReply which is asking for the next missing field
+      // (do nothing here)
+      // CASE E: Still collecting fields → use the AI's natural reply (already in `reply`)
+    } else {
+      // do nothing — `reply` already holds the AI's question for the next field
     }
-    // Handle phone-only clarify
-    if (payload?.intent === "clarify") {
-      const phoneOnly =
-        payload.phone &&
-        payload.phone.trim() !== "" &&
-        !payload.name &&
-        !payload.service &&
-        !payload.date &&
-        !payload.time;
 
-      if (phoneOnly) {
-        const phoneValidation = validatePhone(payload.phone);
-        console.log("phone-only validation:", payload.phone, phoneValidation);
-
-        if (!phoneValidation.valid) {
-          return res.json({
-            reply: phoneValidation.message,
-            parsed: payload,
-            saved: null,
-            conflict: false,
-            suggestions: [],
-          });
-        }
-
-        const normalized = phoneValidation.normalized;
-
-        // Find the most recent customer without a phone number
-        const latestCustomer = await get(
-          `SELECT id FROM customers
-           WHERE phone IS NULL OR phone = ''
-           ORDER BY created_at DESC
-           LIMIT 1`,
-        );
-
-        if (latestCustomer && latestCustomer.id) {
-          await run(
-            `UPDATE customers
-             SET phone = ?
-             WHERE id = ?`,
-            [normalized, latestCustomer.id],
-          );
-
-          reply =
-            "Thanks, I've added your phone number to your latest appointment.";
-        } else {
-          // No customer to attach to – keep it polite and harmless
-          reply =
-            "Thanks for your phone number. I'll use it for your next appointment booking.";
-        }
-      }
+    // If we short-circuited the AI, the assistant reply wasn't logged by
+    // chatbot.js — append it here so future AI turns see the full context.
+    if (shortCircuitAI) {
+      req.session.conversationHistory = [
+        ...req.session.conversationHistory,
+        { role: "assistant", content: reply },
+      ];
     }
-    // Send response
-    res.json({ reply, parsed: payload || null, saved, conflict, suggestions });
+
+    res.json({
+      reply,
+      parsed: payload || null,
+      saved,
+      conflict,
+      suggestions,
+      awaitingConfirmation: !!req.session.awaitingConfirmation,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Something went wrong" });
   }
 });
 
-// List appointments (optional ?date=YYYY-MM-DD&name=foo)
+// List appointments
 app.get("/appointments", async (req, res) => {
   const { date, name } = req.query;
   let sql = `SELECT * FROM appointments`;
@@ -468,6 +772,7 @@ app.delete("/appointments/:id", async (req, res) => {
 
 // Server start
 app.listen(PORT, () => {
+  const { isoDate, displayDate } = getBusinessNow();
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🕓 Today is ${TODAY_ISO} (${LOCAL_TZ})`);
+  console.log(`🕓 Business now: ${isoDate} (${displayDate}) [${BUSINESS_TZ}]`);
 });

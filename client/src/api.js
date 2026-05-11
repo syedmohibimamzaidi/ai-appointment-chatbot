@@ -1,6 +1,7 @@
 export async function sendMessage(message) {
   const res = await fetch("http://localhost:3000/chatbot", {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
   });
