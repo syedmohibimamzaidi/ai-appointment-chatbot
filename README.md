@@ -4,6 +4,10 @@ AI Appointment Chatbot is a full-stack conversational booking system that allows
 
 The system demonstrates how conversational AI can be integrated with real backend business logic while maintaining validation, state management, and production-aware frontend behavior.
 
+## Live Demo
+
+[View Live Demo](https://ai-appointment-chatbot-blond.vercel.app/)
+
 ---
 
 ## Overview
