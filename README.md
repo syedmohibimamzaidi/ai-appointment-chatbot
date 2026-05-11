@@ -8,8 +8,6 @@ The system demonstrates how conversational AI can be integrated with real backen
 
 [View Live Demo](https://ai-appointment-chatbot-blond.vercel.app/)
 
----
-
 ## Overview
 
 The AI Appointment Chatbot allows users to book appointments through a conversational interface rather than traditional forms. Users can describe services naturally (for example: "Book a haircut tomorrow at 9AM"), while the backend validates requests against scheduling rules before confirming the booking.
