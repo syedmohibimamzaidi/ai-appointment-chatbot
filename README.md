@@ -32,23 +32,23 @@ Key capabilities include:
 
 ### Initial Booking Flow
 
-![Initial Booking Flow](./screenshots/Initial%20Booking%20Flow.png)
+![Initial Booking Flow](./screenshots/initial-booking-flow.png)
 
 ### Successful Booking
 
-![Successful Booking](./screenshots/Booking%20Confirmed.png)
+![Successful Booking](./screenshots/successful-booking.png)
 
 ### Second Booking Attempt
 
-![Second Booking Attempt](./screenshots/Second%20Booking%20Attempt.png)
+![Second Booking Attempt](./screenshots/second-booking-attempt.png)
 
 ### Conflict Detection + Smart Suggestions
 
-![Conflict Detection](./screenshots/Conflict%20detection%20%2B%20Smart%20suggestions.png)
+![Conflict Detection](./screenshots/conflict-detection.png)
 
 ### Mobile Responsive Interface
 
-![Mobile UI](./screenshots/Responsive%20Mobile%20Experience.PNG)
+![Mobile UI](./screenshots/mobile-ui.png)
 
 ---
 
