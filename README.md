@@ -48,7 +48,7 @@ Key capabilities include:
 
 ### Mobile Responsive Interface
 
-![Mobile UI](./screenshots/mobile-ui.png)
+<img src="./screenshots/mobile-ui.png" alt="Mobile UI" width="350" />
 
 ---
 
