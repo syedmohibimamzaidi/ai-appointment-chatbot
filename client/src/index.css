@@ -332,3 +332,154 @@ textarea::-webkit-scrollbar-button,
 textarea::-webkit-resizer {
   display: none;
 }
+
+/* Booking summary card -------------------------------------------------- */
+
+/* Outer bubble — subtle neon accent so it reads as "important" without shouting */
+.bubble-booking {
+  border-color: rgba(59, 130, 246, 0.32);
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.9),
+    0 0 0 1px rgba(59, 130, 246, 0.22),
+    0 0 24px rgba(59, 130, 246, 0.11);
+  max-width: 360px;
+  padding: 1rem 1.1rem;
+}
+
+.booking-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+/* Header --------------------------------------------------------------- */
+
+.booking-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.booking-card__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #60a5fa;
+  box-shadow: 0 0 10px rgba(96, 165, 250, 0.85);
+}
+
+.booking-card__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: 0.01em;
+}
+
+/* Grid of items -------------------------------------------------------- */
+
+.booking-card__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 0.85rem;
+}
+
+/* The Date row often has a long value ("Tuesday, May 12, 2026"); let it
+   span both columns so it never wraps awkwardly. */
+.booking-card__item:nth-child(2) {
+  grid-column: 1 / -1;
+}
+
+.booking-card__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  min-width: 0; /* allow text to truncate inside flex children */
+}
+
+.booking-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: rgba(147, 197, 253, 0.7);
+}
+
+.booking-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.booking-card__label {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  font-weight: 500;
+  opacity: 0.75;
+  letter-spacing: 0.01em;
+}
+
+.booking-card__value {
+  font-size: 0.95rem;
+  color: #f8fafc;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+/* Footer hint ---------------------------------------------------------- */
+
+.booking-card__hint {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.booking-card__kbd {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  margin: 0 0.1rem;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #dbeafe;
+  font-size: 0.76rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Confirmed variant — green accent ------------------------------------- */
+
+.bubble-booking--confirmed {
+  border-color: rgba(34, 197, 94, 0.32);
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.9),
+    0 0 0 1px rgba(34, 197, 94, 0.22),
+    0 0 24px rgba(34, 197, 94, 0.11);
+}
+
+.bubble-booking--confirmed .booking-card__dot {
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.85);
+}
+
+.bubble-booking--confirmed .booking-card__icon {
+  color: rgba(134, 239, 172, 0.7);
+}
+
+.booking-card__hint--success {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #bbf7d0;
+}
+
+.booking-card__check {
+  color: #86efac;
+  flex-shrink: 0;
+}

@@ -21,6 +21,8 @@ export default function ChatWindow({ messages, isTyping }) {
           createdAt={msg.createdAt}
           status={msg.status}
           isError={msg.isError}
+          messageType={msg.messageType}
+          bookingDraft={msg.bookingDraft}
         />
       ))}
 

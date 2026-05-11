@@ -449,6 +449,8 @@ app.post("/chatbot", async (req, res) => {
     let saved = null;
     let conflict = false;
     let suggestions = [];
+    let messageType = null;
+    let bookingDraft = null;
 
     // ── Session debug ────────────────────────────────────────────────────────
     // If sessionID changes between requests, the cookie isn't round-tripping
@@ -670,6 +672,17 @@ app.post("/chatbot", async (req, res) => {
 
               const prettyTime = formatDisplayTime(booking.time);
               reply = `✅ Appointment confirmed!\n\nYour ${booking.service} for ${booking.name} has been booked for ${booking.displayDate} at ${prettyTime}.`;
+
+              // Structured payload for the confirmed-state booking card.
+              // Reuses the same shape as `booking_summary` so the frontend can render
+              // a single card component with a "confirmed" variant.
+              messageType = "booking_confirmed";
+              bookingDraft = {
+                service: booking.service,
+                date: booking.displayDate,
+                time: prettyTime,
+                name: booking.name,
+              };
             } else {
               conflict = true;
               req.session.awaitingConfirmation = false;
@@ -700,6 +713,15 @@ app.post("/chatbot", async (req, res) => {
       const prettyTime = formatDisplayTime(booking.time);
       reply = `Just to confirm — should I book your ${booking.service} for ${booking.displayDate} at ${prettyTime} under ${booking.name}? Please reply "yes" to confirm or "no" to cancel.`;
 
+      // Structured payload for the frontend booking summary card.
+      // The `reply` text above is preserved as a natural-language fallback.
+      messageType = "booking_summary";
+      bookingDraft = {
+        service: booking.service,
+        date: booking.displayDate,
+        time: prettyTime,
+        name: booking.name,
+      };
       // CASE D: User said "yes" but draft isn't complete → ignore the yes, keep collecting
     } else if (isYes) {
       // Fall through to the AI's rawReply which is asking for the next missing field
@@ -725,6 +747,8 @@ app.post("/chatbot", async (req, res) => {
       conflict,
       suggestions,
       awaitingConfirmation: !!req.session.awaitingConfirmation,
+      messageType,
+      bookingDraft,
     });
   } catch (error) {
     console.error(error);

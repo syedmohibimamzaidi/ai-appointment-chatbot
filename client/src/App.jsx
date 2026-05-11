@@ -35,6 +35,8 @@ function App() {
         text: response.reply,
         raw: response,
         createdAt: new Date().toISOString(),
+        messageType: response.messageType,
+        bookingDraft: response.bookingDraft,
       };
 
       setMessages((prev) => [...prev, botMessage]);
