@@ -205,6 +205,7 @@ app.use(
 );
 app.use(express.json());
 
+app.set("trust proxy", 1);
 // Session middleware — keeps conversationHistory and pendingBooking per browser tab.
 // For production, swap MemoryStore with connect-sqlite3 or connect-redis.
 //
@@ -221,8 +222,8 @@ app.use(
     cookie: {
       maxAge: 30 * 60 * 1000, // 30 minutes
       httpOnly: true,
-      sameSite: "lax",
-      secure: false, // set true in production behind HTTPS
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: process.env.NODE_ENV === "production",
     },
   }),
 );
