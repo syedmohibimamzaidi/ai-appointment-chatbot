@@ -1,4 +1,3 @@
-
 *,
 *::before,
 *::after {
@@ -11,9 +10,18 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
     sans-serif;
-  background: radial-gradient(circle at top, #111827 0%, #020617 45%, #000 100%);
+  background: radial-gradient(
+    circle at top,
+    #111827 0%,
+    #020617 45%,
+    #000 100%
+  );
   color: #e5e7eb;
 }
 
@@ -30,7 +38,7 @@ body,
 .chat-card {
   width: 100%;
   max-width: 960px;
-  height: 620px;
+  height: min(880px, calc(100vh - 4rem));
   display: flex;
   flex-direction: column;
   border-radius: 24px;
@@ -103,7 +111,7 @@ body,
 .chat-window {
   flex: 1;
   overflow-y: auto;
-  padding: 0.75rem 0.25rem 0.75rem 0;
+  padding: 0.75rem 0.25rem 1rem 0;
   margin-right: 0.25rem;
 }
 
@@ -139,36 +147,37 @@ body,
   border-radius: 18px;
   font-size: 0.92rem;
   line-height: 1.45;
-  animation: bubbleIn 0.22s ease-out;
+  animation: bubbleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(4px);
 }
 
 /* Animation */
 @keyframes bubbleIn {
-  0% {
-    transform: translateY(6px) scale(0.98);
+  from {
     opacity: 0;
+    transform: translateY(6px);
   }
-  60% {
-    transform: translateY(0px) scale(1.02);
+  to {
     opacity: 1;
-  }
-  100% {
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
 .bot-bubble {
   background:
-    radial-gradient(circle at top left, rgba(120, 140, 180, 0.06), transparent 60%),
+    radial-gradient(
+      circle at top left,
+      rgba(120, 140, 180, 0.06),
+      transparent 60%
+    ),
     linear-gradient(135deg, #0b1220, #020617);
   border: 1px solid rgba(255, 255, 255, 0.04);
-  color: #f8fafc;  
-  padding: 0.9rem 1.15rem 0.9rem 1.15rem;                              
+  color: #f8fafc;
+  padding: 0.9rem 1.15rem 0.9rem 1.15rem;
   box-shadow:
     0 12px 30px rgba(15, 23, 42, 0.9),
-    0 0 0 1px rgba(15, 23, 42, 0.7);              
+    0 0 0 1px rgba(15, 23, 42, 0.7);
 }
 
 .user-bubble {
@@ -195,7 +204,7 @@ body,
 
 .bubble-time {
   font-size: 0.75rem;
-  color: rgba(210, 225, 255, 0.82);  /* brighter, cooler, matches glow */
+  color: rgba(210, 225, 255, 0.82); /* brighter, cooler, matches glow */
   font-weight: 500;
   letter-spacing: 0.2px;
 }
@@ -217,6 +226,7 @@ body,
   display: inline-flex;
   gap: 0.25rem;
   padding: 0.4rem 0.7rem;
+  animation: bubbleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .typing-dot {
@@ -309,7 +319,7 @@ body,
 textarea {
   resize: none !important;
   overflow-y: auto;
-  scrollbar-width: none;        /* Firefox: hide scrollbar */
+  scrollbar-width: none; /* Firefox: hide scrollbar */
 }
 
 /* Chrome / Edge / Safari: hide scrollbar + buttons */
