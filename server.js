@@ -489,6 +489,12 @@ app.post("/chatbot", async (req, res) => {
     let messageType = null;
     let bookingDraft = null;
 
+    // ── Conversation state ─────────────────────────────────────────────────
+    // Resolves to either a conversationId-keyed entry (mobile) or req.session
+    // (desktop). The rest of the handler reads/writes `state.X` instead of
+    // `req.session.X` so the storage choice is transparent.
+    const { store, state, id: stateKey } = getState(req);
+
     // ── Session debug ────────────────────────────────────────────────────────
     // If sessionID changes between requests, the cookie isn't round-tripping
     // and pendingBooking will be empty every turn. Watch this log.
@@ -505,12 +511,6 @@ app.post("/chatbot", async (req, res) => {
       );
     }
 
-    // ── Conversation state ─────────────────────────────────────────────────
-    // Resolves to either a conversationId-keyed entry (mobile) or req.session
-    // (desktop). The rest of the handler reads/writes `state.X` instead of
-    // `req.session.X` so the storage choice is transparent.
-    const { store, state, id: stateKey } = getState(req);
-
     // ── Pre-detect yes/no so we can short-circuit the AI call when confirming ──
     const trimmedMsg = (message || "").trim().toLowerCase();
 
@@ -523,7 +523,7 @@ app.post("/chatbot", async (req, res) => {
     const isYes = YES_RE.test(trimmedMsg);
     const isNo = NO_RE.test(trimmedMsg);
     const shortCircuitAI =
-      !!req.session.awaitingConfirmation && (isYes || isNo);
+      !!state.session.awaitingConfirmation && (isYes || isNo);
 
     // ── Call AI (unless we're handling a yes/no confirmation, where the server owns the reply) ──
     let rawReply = "";
@@ -531,11 +531,11 @@ app.post("/chatbot", async (req, res) => {
     if (!shortCircuitAI) {
       const aiResult = await getChatResponse(
         message,
-        req.session.conversationHistory,
-        req.session.pendingBooking,
+        state.session.conversationHistory,
+        state.session.pendingBooking,
       );
       rawReply = aiResult.reply;
-      req.session.conversationHistory = aiResult.conversationHistory;
+      state.session.conversationHistory = aiResult.conversationHistory;
 
       if (DEBUG) {
         console.log(
@@ -549,8 +549,8 @@ app.post("/chatbot", async (req, res) => {
       console.log("AI PAYLOAD:", payload);
     } else {
       // Still log the user's message into history so future AI turns have context
-      req.session.conversationHistory = [
-        ...req.session.conversationHistory,
+      state.session.conversationHistory = [
+        ...state.session.conversationHistory,
         { role: "user", content: message },
       ];
       if (DEBUG) {
@@ -563,7 +563,7 @@ app.post("/chatbot", async (req, res) => {
     // ── Fallback: if the AI reply had no JSON block, recover gracefully ───────
     let reply = rawReply;
     if (!shortCircuitAI && !payload) {
-      const pending0 = req.session.pendingBooking;
+      const pending0 = state.session.pendingBooking;
       const allRequired = ["name", "service", "dateText", "time"];
       const missing = allRequired.find((f) =>
         f === "dateText" ? !pending0.dateText : !pending0[f],
@@ -593,20 +593,20 @@ app.post("/chatbot", async (req, res) => {
       !isYes &&
       !isNo
     ) {
-      req.session.pendingBooking = mergeBookingFields(
-        req.session.pendingBooking,
+      state.session.pendingBooking = mergeBookingFields(
+        state.session.pendingBooking,
         payload,
       );
     }
 
-    const pending = req.session.pendingBooking;
-    const awaitingConfirmation = !!req.session.awaitingConfirmation;
+    const pending = state.session.pendingBooking;
+    const awaitingConfirmation = !!state.session.awaitingConfirmation;
 
     // ── Phone validation (unchanged) ─────────────────────────────────────────
     if (pending.phone) {
       const phoneValidation = validatePhone(pending.phone);
       if (!phoneValidation.valid) {
-        req.session.pendingBooking.phone = "";
+        state.session.pendingBooking.phone = "";
         return res.json({
           reply: phoneValidation.message,
           parsed: payload,
@@ -615,7 +615,7 @@ app.post("/chatbot", async (req, res) => {
           suggestions: [],
         });
       }
-      req.session.pendingBooking.phone = phoneValidation.normalized;
+      state.session.pendingBooking.phone = phoneValidation.normalized;
       pending.phone = phoneValidation.normalized;
     }
 
@@ -637,8 +637,8 @@ app.post("/chatbot", async (req, res) => {
 
     // CASE A: User explicitly declined a pending confirmation → clear draft
     if (awaitingConfirmation && isNo) {
-      req.session.pendingBooking = {};
-      req.session.awaitingConfirmation = false;
+      state.session.pendingBooking = {};
+      state.session.awaitingConfirmation = false;
       reply =
         "No problem — I've cancelled that booking. Let me know if you'd like to start over.";
 
@@ -663,7 +663,7 @@ app.post("/chatbot", async (req, res) => {
 
       if (blackout) {
         conflict = true;
-        req.session.awaitingConfirmation = false; // user must pick a new date
+        state.session.awaitingConfirmation = false; // user must pick a new date
         reply =
           `❌ We're closed on ${booking.displayDate} due to: ${blackout.note || "a blackout day"}.\n` +
           `Please choose another date and I'll re-confirm.`;
@@ -672,7 +672,7 @@ app.post("/chatbot", async (req, res) => {
 
         if (!hours) {
           conflict = true;
-          req.session.awaitingConfirmation = false;
+          state.session.awaitingConfirmation = false;
           const dow = [
             "Sunday",
             "Monday",
@@ -691,7 +691,7 @@ app.post("/chatbot", async (req, res) => {
 
           if (!withinHours) {
             conflict = true;
-            req.session.awaitingConfirmation = false;
+            state.session.awaitingConfirmation = false;
             suggestions = await nextAvailableSlots(
               booking.date,
               booking.time,
@@ -724,8 +724,8 @@ app.post("/chatbot", async (req, res) => {
               );
 
               // Reset session — prevents duplicate saves if user repeats "yes"
-              req.session.pendingBooking = {};
-              req.session.awaitingConfirmation = false;
+              state.session.pendingBooking = {};
+              state.session.awaitingConfirmation = false;
 
               const prettyTime = formatDisplayTime(booking.time);
               reply = `✅ Appointment confirmed!\n\nYour ${booking.service} for ${booking.name} has been booked for ${booking.displayDate} at ${prettyTime}.`;
@@ -742,7 +742,7 @@ app.post("/chatbot", async (req, res) => {
               };
             } else {
               conflict = true;
-              req.session.awaitingConfirmation = false;
+              state.session.awaitingConfirmation = false;
               suggestions = await nextAvailableSlots(
                 booking.date,
                 booking.time,
@@ -766,7 +766,7 @@ app.post("/chatbot", async (req, res) => {
     } else if (complete) {
       // User may have edited a previously-confirmed draft (e.g. "actually 3pm"),
       // in which case awaitingConfirmation is already true — just re-summarize.
-      req.session.awaitingConfirmation = true;
+      state.session.awaitingConfirmation = true;
       const prettyTime = formatDisplayTime(booking.time);
       reply = `Just to confirm — should I book your ${booking.service} for ${booking.displayDate} at ${prettyTime} under ${booking.name}? Please reply "yes" to confirm or "no" to cancel.`;
 
@@ -791,8 +791,8 @@ app.post("/chatbot", async (req, res) => {
     // If we short-circuited the AI, the assistant reply wasn't logged by
     // chatbot.js — append it here so future AI turns see the full context.
     if (shortCircuitAI) {
-      req.session.conversationHistory = [
-        ...req.session.conversationHistory,
+      state.session.conversationHistory = [
+        ...state.session.conversationHistory,
         { role: "assistant", content: reply },
       ];
     }
@@ -803,7 +803,7 @@ app.post("/chatbot", async (req, res) => {
       saved,
       conflict,
       suggestions: suggestions.map(formatDisplayTime),
-      awaitingConfirmation: !!req.session.awaitingConfirmation,
+      awaitingConfirmation: !!state.session.awaitingConfirmation,
       messageType,
       bookingDraft,
     });
